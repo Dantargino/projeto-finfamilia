@@ -1,78 +1,28 @@
 // ═══════════════════════════════════════════
-// DADOS INICIAIS (usados apenas no primeiro acesso)
+// CONFIGURAÇÃO DA API
 // ═══════════════════════════════════════════
-const dadosIniciais = {
-  nextCartaoId: 3,
-  nextPessoaId: 4,
-  nextCategoriaId: 7,
-  nextCompraId: 9,
+const API_URL = "http://localhost:5006";
 
-  cartoes: [
-    { id: 1, nome: 'Nubank', bandeira: 'Mastercard', limite: 6000, cor: '#8b5cf6', fechamento: 10, vencimento: 17 },
-    { id: 2, nome: 'Itaú Platinum', bandeira: 'Mastercard', limite: 19120, cor: '#2563eb', fechamento: 5, vencimento: 12 },
-  ],
-  pessoas: [
-    { id: 1, nome: 'Danyel', cor: '#5a98ff' },
-    { id: 2, nome: 'Nêga', cor: '#ff5a5a' },
-    { id: 3, nome: 'Mãe', cor: '#40036eff' },
-  ],
-  categorias: [
-    { id: 1, nome: 'Alimentação', emoji: '🍔', cor: '#f59e0b' },
-    { id: 2, nome: 'Transporte', emoji: '🚗', cor: '#3b82f6' },
-    { id: 3, nome: 'Saúde', emoji: '💊', cor: '#10b981' },
-    { id: 4, nome: 'Lazer', emoji: '🎮', cor: '#8b5cf6' },
-    { id: 5, nome: 'Casa', emoji: '🏠', cor: '#f97316' },
-    { id: 6, nome: 'Vestuário', emoji: '👗', cor: '#ec4899' },
-  ],
-  compras: [
-    {
-      id: 1, descricao: 'Mercado Semana', valor: 480, parcelas: 1, parcelaAtual: 1,
-      dataCompra: '2025-01-05', cartaoId: 1, pessoaIds: [1, 2], categoriaId: 1
-    },
-    {
-      id: 2, descricao: 'Geladeira Nova', valor: 3600, parcelas: 12, parcelaAtual: 1,
-      dataCompra: '2025-01-10', cartaoId: 2, pessoaIds: [1], categoriaId: 5
-    },
-    {
-      id: 3, descricao: 'Academia Anual', valor: 1800, parcelas: 6, parcelaAtual: 1,
-      dataCompra: '2025-01-15', cartaoId: 1, pessoaIds: [2], categoriaId: 3
-    },
-    {
-      id: 4, descricao: 'Uber Mês', valor: 220, parcelas: 1, parcelaAtual: 1,
-      dataCompra: '2025-02-03', cartaoId: 1, pessoaIds: [1, 2], categoriaId: 2
-    },
-    {
-      id: 5, descricao: 'Tênis Corrida', valor: 960, parcelas: 4, parcelaAtual: 1,
-      dataCompra: '2025-02-08', cartaoId: 2, pessoaIds: [2], categoriaId: 6
-    },
-    {
-      id: 6, descricao: 'Restaurante Aniversário', valor: 340, parcelas: 1, parcelaAtual: 1,
-      dataCompra: '2025-02-14', cartaoId: 1, pessoaIds: [1, 2], categoriaId: 4
-    },
-    {
-      id: 7, descricao: 'Notebook Trabalho', valor: 7200, parcelas: 18, parcelaAtual: 1,
-      dataCompra: '2025-03-02', cartaoId: 2, pessoaIds: [1], categoriaId: 5
-    },
-    {
-      id: 8, descricao: 'Farmácia', valor: 180, parcelas: 1, parcelaAtual: 1,
-      dataCompra: '2025-03-10', cartaoId: 1, pessoaIds: [1], categoriaId: 3
-    },
-  ]
-};
+async function apiFetch(path, options = {}) {
+  const res = await fetch(API_URL + path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(text || res.statusText);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
 
 // ═══════════════════════════════════════════
 // ESTADO DA APLICAÇÃO
 // ═══════════════════════════════════════════
 const state = {
   selectedMonth: null,
-  currentSection: 'dashboard',
-  currentTab: 'gastos',
-
-  // Contadores de auto-increment
-  nextCartaoId: 0,
-  nextPessoaId: 0,
-  nextCategoriaId: 0,
-  nextCompraId: 0,
+  currentSection: "dashboard",
+  currentTab: "gastos",
 
   cartoes: [],
   pessoas: [],
@@ -81,42 +31,35 @@ const state = {
 };
 
 // ═══════════════════════════════════════════
-// PERSISTÊNCIA (localStorage)
+// PERSISTÊNCIA (API REST)
 // ═══════════════════════════════════════════
-const STORAGE_KEY = 'finFamiliaState';
+async function loadState() {
+  try {
+    const [cartoes, pessoas, categorias, compras] = await Promise.all([
+      apiFetch("/api/cartoes"),
+      apiFetch("/api/pessoas"),
+      apiFetch("/api/categorias"),
+      apiFetch("/api/compras"),
+    ]);
 
-function saveState() {
-  const dados = {
-    nextCartaoId: state.nextCartaoId,
-    nextPessoaId: state.nextPessoaId,
-    nextCategoriaId: state.nextCategoriaId,
-    nextCompraId: state.nextCompraId,
-    cartoes: state.cartoes,
-    pessoas: state.pessoas,
-    categorias: state.categorias,
-    compras: state.compras,
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
-}
+    state.cartoes = cartoes;
+    state.pessoas = pessoas;
+    state.categorias = categorias;
 
-function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  let dados;
-  if (raw) {
-    try { dados = JSON.parse(raw); } catch (e) { dados = null; }
+    // Normaliza compras: garante que pessoaIds exista como array de ints
+    state.compras = compras.map((c) => ({
+      id: c.id,
+      descricao: c.descricao,
+      valor: c.valor,
+      parcelas: c.parcelas,
+      dataCompra: c.dataCompra, // "YYYY-MM-DD"
+      cartaoId: c.cartaoId,
+      categoriaId: c.categoriaId,
+      pessoaIds: c.pessoaIds ?? [],
+    }));
+  } catch (e) {
+    toast("Erro ao conectar com a API: " + e.message, false);
   }
-  if (!dados) {
-    dados = dadosIniciais;
-  }
-
-  state.nextCartaoId = dados.nextCartaoId;
-  state.nextPessoaId = dados.nextPessoaId;
-  state.nextCategoriaId = dados.nextCategoriaId;
-  state.nextCompraId = dados.nextCompraId;
-  state.cartoes = dados.cartoes;
-  state.pessoas = dados.pessoas;
-  state.categorias = dados.categorias;
-  state.compras = dados.compras;
 }
 
 // ═══════════════════════════════════════════
@@ -131,7 +74,7 @@ function getActiveMonths() {
 
   // Encontra o último mês que possui alguma parcela
   let ultimoMes = mesAtual;
-  state.compras.forEach(c => {
+  state.compras.forEach((c) => {
     for (let p = 0; p < c.parcelas; p++) {
       const d = addMonths(c.dataCompra, p).slice(0, 7);
       if (d > ultimoMes) ultimoMes = d;
@@ -140,7 +83,7 @@ function getActiveMonths() {
 
   // Gera sequência contínua: Jan/anoAtual → ultimoMes
   const inicio = new Date(anoAtual, 0, 1);
-  const [fimAno, fimMes] = ultimoMes.split('-').map(Number);
+  const [fimAno, fimMes] = ultimoMes.split("-").map(Number);
   const fim = new Date(fimAno, fimMes - 1, 1);
   const months = [];
   const cursor = new Date(inicio);
@@ -152,7 +95,7 @@ function getActiveMonths() {
 }
 
 function addMonths(dateStr, n) {
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr + "T12:00:00");
   d.setMonth(d.getMonth() + n);
   return d.toISOString().slice(0, 10);
 }
@@ -160,7 +103,7 @@ function addMonths(dateStr, n) {
 // Retorna as "entradas de fatura" para um mês/cartao específico
 function getFaturaEntries(monthStr, cartaoId = null) {
   const entries = [];
-  state.compras.forEach(c => {
+  state.compras.forEach((c) => {
     if (cartaoId && c.cartaoId !== cartaoId) return;
     for (let p = 0; p < c.parcelas; p++) {
       const dt = addMonths(c.dataCompra, p);
@@ -186,7 +129,7 @@ function getTotalMes(monthStr) {
 
 function getParcelasFuturas(monthStr) {
   const result = [];
-  state.compras.forEach(c => {
+  state.compras.forEach((c) => {
     if (c.parcelas <= 1) return;
     for (let p = 0; p < c.parcelas; p++) {
       const dt = addMonths(c.dataCompra, p);
@@ -208,28 +151,44 @@ function getParcelasFuturas(monthStr) {
 function getCatTotals(monthStr) {
   const entries = getFaturaEntries(monthStr);
   const map = {};
-  entries.forEach(e => {
-    const cat = state.categorias.find(c => c.id === e.compra.categoriaId);
+  entries.forEach((e) => {
+    const cat = state.categorias.find((c) => c.id === e.compra.categoriaId);
     if (!cat) return;
     map[cat.id] = (map[cat.id] || 0) + e.valorParcela;
   });
-  return Object.entries(map).map(([id, total]) => {
-    const cat = state.categorias.find(c => c.id === parseInt(id));
-    return { cat, total };
-  }).sort((a, b) => b.total - a.total);
+  return Object.entries(map)
+    .map(([id, total]) => {
+      const cat = state.categorias.find((c) => c.id === parseInt(id));
+      return { cat, total };
+    })
+    .sort((a, b) => b.total - a.total);
 }
 
 // ═══════════════════════════════════════════
 // RENDER HELPERS
 // ═══════════════════════════════════════════
-const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmt = (v) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtMonth = (m) => {
-  const [y, mo] = m.split('-');
-  const names = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  return names[parseInt(mo)-1] + ' ' + y;
+  const [y, mo] = m.split("-");
+  const names = [
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
+  ];
+  return names[parseInt(mo) - 1] + " " + y;
 };
 const fmtDate = (dateStr) => {
-  const [y, m, d] = dateStr.split('-');
+  const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
 };
 const nowMonth = () => new Date().toISOString().slice(0, 7);
@@ -238,26 +197,29 @@ const nowMonth = () => new Date().toISOString().slice(0, 7);
 // MONTH STRIP
 // ═══════════════════════════════════════════
 function renderMonthStrip() {
-  const strip = document.getElementById('month-strip');
+  const strip = document.getElementById("month-strip");
   const months = getActiveMonths();
   if (!state.selectedMonth) state.selectedMonth = nowMonth();
 
-  strip.innerHTML = months.map(m => {
-    const total = getTotalMes(m);
-    const entries = getFaturaEntries(m);
-    const carries = entries.filter(e => e.isCarry).length;
-    const active = m === state.selectedMonth ? 'active' : '';
-    return `
+  strip.innerHTML = months
+    .map((m) => {
+      const total = getTotalMes(m);
+      const entries = getFaturaEntries(m);
+      const carries = entries.filter((e) => e.isCarry).length;
+      const active = m === state.selectedMonth ? "active" : "";
+      return `
       <button class="month-pill ${active}" data-month="${m}" onclick="selectMonth('${m}')">
-        ${carries > 0 ? `<div class="m-badge">${carries}</div>` : ''}
+        ${carries > 0 ? `<div class="m-badge">${carries}</div>` : ""}
         <span class="m-name">${fmtMonth(m)}</span>
         ${total > 0 ? `<span class="m-total">${fmt(total)}</span>` : '<span class="m-total" style="opacity:.3">—</span>'}
       </button>`;
-  }).join('');
+    })
+    .join("");
 
   // Scroll para o mês ativo
-  const activeBtn = strip.querySelector('.month-pill.active');
-  if (activeBtn) activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  const activeBtn = strip.querySelector(".month-pill.active");
+  if (activeBtn)
+    activeBtn.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 function selectMonth(m) {
@@ -272,13 +234,13 @@ function renderDashboard() {
   const m = state.selectedMonth || nowMonth();
   const entries = getFaturaEntries(m);
   const totalMes = entries.reduce((s, e) => s + e.valorParcela, 0);
-  const carries = entries.filter(e => e.isCarry);
+  const carries = entries.filter((e) => e.isCarry);
   const totalCarries = carries.reduce((s, e) => s + e.valorParcela, 0);
   const parcelados = getParcelasFuturas(m);
   const comprometido = parcelados.reduce((s, e) => s + e.valorParcela, 0);
 
   // Summary cards
-  document.getElementById('summary-grid').innerHTML = `
+  document.getElementById("summary-grid").innerHTML = `
     <div class="summary-card yellow">
       <div class="s-label">Total ${fmtMonth(m)}</div>
       <div class="s-value">${fmt(totalMes)}</div>
@@ -296,48 +258,63 @@ function renderDashboard() {
     </div>
     <div class="summary-card purple">
       <div class="s-label">Cartões Utilizados</div>
-      <div class="s-value">${new Set(entries.map(e=>e.compra.cartaoId)).size}</div>
+      <div class="s-value">${new Set(entries.map((e) => e.compra.cartaoId)).size}</div>
       <div class="s-sub">de ${state.cartoes.length} cartões cadastrados</div>
     </div>`;
 
   // Bar chart (últimos 6 meses + selecionado)
   const months = getActiveMonths();
   const idx = months.indexOf(m);
-  const range = months.slice(Math.max(0, idx-5), idx+1);
-  const vals = range.map(mm => getTotalMes(mm));
+  const range = months.slice(Math.max(0, idx - 5), idx + 1);
+  const vals = range.map((mm) => getTotalMes(mm));
   const maxVal = Math.max(...vals, 1);
-  document.getElementById('bar-chart').innerHTML = range.map((mm, i) => `
+  document.getElementById("bar-chart").innerHTML = range
+    .map(
+      (mm, i) => `
     <div class="bar-col">
-      <div class="bar-val">${vals[i] > 0 ? fmt(vals[i]).replace('R$','').trim() : ''}</div>
-      <div class="bar" style="height:${Math.max(4,(vals[i]/maxVal)*90)}px; background:${mm===m?'var(--accent)':'var(--surface3)'}; border:1px solid ${mm===m?'transparent':'var(--border)'}"></div>
-      <div class="bar-label">${fmtMonth(mm).replace(' ','<br>')}</div>
-    </div>`).join('');
+      <div class="bar-val">${vals[i] > 0 ? fmt(vals[i]).replace("R$", "").trim() : ""}</div>
+      <div class="bar" style="height:${Math.max(4, (vals[i] / maxVal) * 90)}px; background:${mm === m ? "var(--accent)" : "var(--surface3)"}; border:1px solid ${mm === m ? "transparent" : "var(--border)"}"></div>
+      <div class="bar-label">${fmtMonth(mm).replace(" ", "<br>")}</div>
+    </div>`,
+    )
+    .join("");
 
   // Cat chart
-  document.getElementById('cat-chart-month').textContent = fmtMonth(m);
+  document.getElementById("cat-chart-month").textContent = fmtMonth(m);
   const cats = getCatTotals(m);
   const maxCat = cats[0]?.total || 1;
-  document.getElementById('cat-chart').innerHTML = cats.length === 0
-    ? '<p style="font-size:11px;color:var(--text-dim);padding:8px 0;">Sem dados</p>'
-    : cats.map(({cat, total}) => `
+  document.getElementById("cat-chart").innerHTML =
+    cats.length === 0
+      ? '<p style="font-size:11px;color:var(--text-dim);padding:8px 0;">Sem dados</p>'
+      : cats
+          .map(
+            ({ cat, total }) => `
     <div class="cat-row">
       <span class="cat-name">${cat.emoji} ${cat.nome}</span>
       <div class="cat-bar-wrap">
-        <div class="cat-bar-fill" style="width:${(total/maxCat)*100}%;background:${cat.cor}"></div>
+        <div class="cat-bar-fill" style="width:${(total / maxCat) * 100}%;background:${cat.cor}"></div>
       </div>
       <span class="cat-amount">${fmt(total)}</span>
-    </div>`).join('');
+    </div>`,
+          )
+          .join("");
 
   // Recent table (last 5)
-  const recent = [...entries].sort((a,b) => b.dataCobranca.localeCompare(a.dataCobranca)).slice(0,5);
-  document.getElementById('recent-table-wrap').innerHTML = renderComprasTable(recent, false);
+  const recent = [...entries]
+    .sort((a, b) => b.dataCobranca.localeCompare(a.dataCobranca))
+    .slice(0, 5);
+  document.getElementById("recent-table-wrap").innerHTML = renderComprasTable(
+    recent,
+    false,
+  );
 }
 
 // ═══════════════════════════════════════════
 // COMPRAS TABLE
 // ═══════════════════════════════════════════
 function renderComprasTable(entries, showDelete = true) {
-  if (entries.length === 0) return `<div class="empty"><div class="e-icon">🧾</div><p>Nenhuma compra neste mês</p></div>`;
+  if (entries.length === 0)
+    return `<div class="empty"><div class="e-icon">🧾</div><p>Nenhuma compra neste mês</p></div>`;
   return `<table>
     <thead>
       <tr>
@@ -348,75 +325,91 @@ function renderComprasTable(entries, showDelete = true) {
         <th>Parcelas</th>
         <th>Data da Compra</th>
         <th style="text-align:right">Valor Parcela</th>
-        ${showDelete ? '<th></th>' : ''}
+        ${showDelete ? "<th></th>" : ""}
       </tr>
     </thead>
     <tbody>
-      ${entries.map(e => {
-        const cat = state.categorias.find(c => c.id === e.compra.categoriaId);
-        const card = state.cartoes.find(c => c.id === e.compra.cartaoId);
-        const pessoas = e.compra.pessoaIds.map(pid => state.pessoas.find(p=>p.id===pid)).filter(Boolean);
-        return `<tr class="${e.isCarry ? 'carry-row' : ''}">
+      ${entries
+        .map((e) => {
+          const cat = state.categorias.find(
+            (c) => c.id === e.compra.categoriaId,
+          );
+          const card = state.cartoes.find((c) => c.id === e.compra.cartaoId);
+          const pessoas = e.compra.pessoaIds
+            .map((pid) => state.pessoas.find((p) => p.id === pid))
+            .filter(Boolean);
+          return `<tr class="${e.isCarry ? "carry-row" : ""}">
           <td>
             <div style="font-weight:500">${e.compra.descricao}</div>
-            ${e.isCarry ? `<div class="carry-info">↩ Parcela de ${fmtMonth(e.compra.dataCompra.slice(0,7))}</div>` : ''}
+            ${e.isCarry ? `<div class="carry-info">↩ Parcela de ${fmtMonth(e.compra.dataCompra.slice(0, 7))}</div>` : ""}
           </td>
-          <td>${cat ? `<span class="badge badge-cat">${cat.emoji} ${cat.nome}</span>` : '—'}</td>
-          <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : '—'}</td>
-          <td>${pessoas.map(p => p.nome).join(' ')}</td>
+          <td>${cat ? `<span class="badge badge-cat">${cat.emoji} ${cat.nome}</span>` : "—"}</td>
+          <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : "—"}</td>
+          <td>${pessoas.map((p) => p.nome).join(" ")}</td>
           <td>
-            <span class="badge ${e.isParcelado ? 'badge-installment' : 'badge-single'}">
-              ${e.isParcelado ? `${e.numeroParcela}/${e.totalParcelas}` : 'à vista'}
+            <span class="badge ${e.isParcelado ? "badge-installment" : "badge-single"}">
+              ${e.isParcelado ? `${e.numeroParcela}/${e.totalParcelas}` : "à vista"}
             </span>
           </td>
           <td>${fmtDate(e.compra.dataCompra)}</td>
           <td style="text-align:right; font-weight:600">${fmt(e.valorParcela)}</td>
-          ${showDelete ? `<td><button class="btn btn-danger" style="padding:4px 8px;font-size:10px;" onclick="deleteCompra(${e.compra.id})">✕</button></td>` : ''}
+          ${showDelete ? `<td><button class="btn btn-danger" style="padding:4px 8px;font-size:10px;" onclick="deleteCompra(${e.compra.id})">✕</button></td>` : ""}
         </tr>`;
-      }).join('')}
+        })
+        .join("")}
     </tbody>
   </table>`;
 }
 
 function renderComprasSection() {
   const m = state.selectedMonth || nowMonth();
-  document.getElementById('compras-title').textContent = `Compras — ${fmtMonth(m)}`;
+  document.getElementById("compras-title").textContent =
+    `Compras — ${fmtMonth(m)}`;
 
   // Gastos do mês
   const entries = getFaturaEntries(m);
-  document.getElementById('compras-table-wrap').innerHTML = renderComprasTable(entries, true);
+  document.getElementById("compras-table-wrap").innerHTML = renderComprasTable(
+    entries,
+    true,
+  );
 
   // Parcelas futuras
   const futuras = getParcelasFuturas(m);
   if (futuras.length === 0) {
-    document.getElementById('parcelas-table-wrap').innerHTML = `<div class="empty"><div class="e-icon">✅</div><p>Sem parcelas futuras a partir deste mês</p></div>`;
+    document.getElementById("parcelas-table-wrap").innerHTML =
+      `<div class="empty"><div class="e-icon">✅</div><p>Sem parcelas futuras a partir deste mês</p></div>`;
   } else {
     let html = `<table><thead><tr><th>Descrição</th><th>Mês</th><th>Cartão</th><th>Parcela</th><th style="text-align:right">Valor</th></tr></thead><tbody>`;
-    futuras.forEach(e => {
-      const card = state.cartoes.find(c => c.id === e.compra.cartaoId);
+    futuras.forEach((e) => {
+      const card = state.cartoes.find((c) => c.id === e.compra.cartaoId);
       html += `<tr>
         <td>${e.compra.descricao}</td>
         <td style="color:var(--accent2)">${fmtMonth(e.mes)}</td>
-        <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : '—'}</td>
+        <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : "—"}</td>
         <td><span class="badge badge-installment">${e.numeroParcela}/${e.totalParcelas}</span></td>
         <td style="text-align:right;font-weight:600">${fmt(e.valorParcela)}</td>
       </tr>`;
     });
-    html += '</tbody></table>';
-    document.getElementById('parcelas-table-wrap').innerHTML = html;
+    html += "</tbody></table>";
+    document.getElementById("parcelas-table-wrap").innerHTML = html;
   }
 
   // Cat chart
   const cats = getCatTotals(m);
   const maxCat = cats[0]?.total || 1;
-  document.getElementById('cat-chart2').innerHTML = cats.length === 0
-    ? '<p style="font-size:11px;color:var(--text-dim)">Sem dados neste mês</p>'
-    : cats.map(({cat, total}) => `
+  document.getElementById("cat-chart2").innerHTML =
+    cats.length === 0
+      ? '<p style="font-size:11px;color:var(--text-dim)">Sem dados neste mês</p>'
+      : cats
+          .map(
+            ({ cat, total }) => `
       <div class="cat-row">
         <span class="cat-name">${cat.emoji} ${cat.nome}</span>
-        <div class="cat-bar-wrap"><div class="cat-bar-fill" style="width:${(total/maxCat)*100}%;background:${cat.cor}"></div></div>
+        <div class="cat-bar-wrap"><div class="cat-bar-fill" style="width:${(total / maxCat) * 100}%;background:${cat.cor}"></div></div>
         <span class="cat-amount">${fmt(total)}</span>
-      </div>`).join('');
+      </div>`,
+          )
+          .join("");
 }
 
 // ═══════════════════════════════════════════
@@ -424,12 +417,17 @@ function renderComprasSection() {
 // ═══════════════════════════════════════════
 function renderCartoes() {
   const m = state.selectedMonth || nowMonth();
-  document.getElementById('cartoes-list').innerHTML = state.cartoes.length === 0
-    ? `<div class="empty"><div class="e-icon">💳</div><p>Nenhum cartão cadastrado</p></div>`
-    : state.cartoes.map(c => {
-        const total = getFaturaEntries(m, c.id).reduce((s,e) => s+e.valorParcela, 0);
-        const pct = (total / c.limite) * 100;
-        return `<div class="list-item">
+  document.getElementById("cartoes-list").innerHTML =
+    state.cartoes.length === 0
+      ? `<div class="empty"><div class="e-icon">💳</div><p>Nenhum cartão cadastrado</p></div>`
+      : state.cartoes
+          .map((c) => {
+            const total = getFaturaEntries(m, c.id).reduce(
+              (s, e) => s + e.valorParcela,
+              0,
+            );
+            const pct = (total / c.limite) * 100;
+            return `<div class="list-item">
           <div class="list-item-info">
             <div class="color-swatch" style="background:${c.cor}; width:18px;height:18px;border-radius:4px;"></div>
             <div>
@@ -441,14 +439,15 @@ function renderCartoes() {
                   <span>${fmt(total)} / ${fmt(c.limite)}</span>
                 </div>
                 <div style="height:4px;background:var(--surface3);border-radius:2px;width:200px;">
-                  <div style="width:${Math.min(100,pct)}%;height:100%;background:${pct>80?'var(--accent3)':pct>50?'var(--accent)':'var(--accent2)'};border-radius:2px;transition:width .5s;"></div>
+                  <div style="width:${Math.min(100, pct)}%;height:100%;background:${pct > 80 ? "var(--accent3)" : pct > 50 ? "var(--accent)" : "var(--accent2)"};border-radius:2px;transition:width .5s;"></div>
                 </div>
               </div>
             </div>
           </div>
           <button class="btn btn-danger" onclick="deleteItem('cartao',${c.id})">Remover</button>
         </div>`;
-      }).join('');
+          })
+          .join("");
 }
 
 // ═══════════════════════════════════════════
@@ -456,12 +455,19 @@ function renderCartoes() {
 // ═══════════════════════════════════════════
 function renderPessoas() {
   const m = state.selectedMonth || nowMonth();
-  document.getElementById('pessoas-list').innerHTML = state.pessoas.length === 0
-    ? `<div class="empty"><div class="e-icon">👥</div><p>Nenhuma pessoa cadastrada</p></div>`
-    : state.pessoas.map(p => {
-        const entries = getFaturaEntries(m).filter(e => e.compra.pessoaIds.includes(p.id));
-        const total = entries.reduce((s,e) => s+e.valorParcela/e.compra.pessoaIds.length, 0);
-        return `<div class="list-item">
+  document.getElementById("pessoas-list").innerHTML =
+    state.pessoas.length === 0
+      ? `<div class="empty"><div class="e-icon">👥</div><p>Nenhuma pessoa cadastrada</p></div>`
+      : state.pessoas
+          .map((p) => {
+            const entries = getFaturaEntries(m).filter((e) =>
+              e.compra.pessoaIds.includes(p.id),
+            );
+            const total = entries.reduce(
+              (s, e) => s + e.valorParcela / e.compra.pessoaIds.length,
+              0,
+            );
+            return `<div class="list-item">
           <div class="list-item-info">
             <div class="person-avatar" style="background:${p.cor};color:#000;width:36px;height:36px;font-size:14px;margin-right:0;">${p.nome[0]}</div>
             <div>
@@ -471,16 +477,20 @@ function renderPessoas() {
           </div>
           <button class="btn btn-danger" onclick="deleteItem('pessoa',${p.id})">Remover</button>
         </div>`;
-      }).join('');
+          })
+          .join("");
 }
 
 // ═══════════════════════════════════════════
 // CATEGORIAS SECTION
 // ═══════════════════════════════════════════
 function renderCategorias() {
-  document.getElementById('categorias-list').innerHTML = state.categorias.length === 0
-    ? `<div class="empty"><div class="e-icon">🏷️</div><p>Nenhuma categoria</p></div>`
-    : state.categorias.map(c => `
+  document.getElementById("categorias-list").innerHTML =
+    state.categorias.length === 0
+      ? `<div class="empty"><div class="e-icon">🏷️</div><p>Nenhuma categoria</p></div>`
+      : state.categorias
+          .map(
+            (c) => `
       <div class="list-item">
         <div class="list-item-info">
           <span style="font-size:20px;">${c.emoji}</span>
@@ -490,7 +500,9 @@ function renderCategorias() {
           </div>
         </div>
         <button class="btn btn-danger" onclick="deleteItem('categoria',${c.id})">Remover</button>
-      </div>`).join('');
+      </div>`,
+          )
+          .join("");
 }
 
 // ═══════════════════════════════════════════
@@ -498,14 +510,19 @@ function renderCategorias() {
 // ═══════════════════════════════════════════
 function renderSidebar() {
   const m = state.selectedMonth || nowMonth();
-  document.getElementById('sidebar-cards').innerHTML = state.cartoes.map(c => {
-    const total = getFaturaEntries(m, c.id).reduce((s,e) => s+e.valorParcela, 0);
-    return `<div class="navbar-card-mini">
+  document.getElementById("sidebar-cards").innerHTML = state.cartoes
+    .map((c) => {
+      const total = getFaturaEntries(m, c.id).reduce(
+        (s, e) => s + e.valorParcela,
+        0,
+      );
+      return `<div class="navbar-card-mini">
       <span class="card-dot" style="background:${c.cor}"></span>
       <span>${c.nome}</span>
       <span class="card-val">${fmt(total)}</span>
     </div>`;
-  }).join('');
+    })
+    .join("");
 }
 
 // ═══════════════════════════════════════════
@@ -513,17 +530,21 @@ function renderSidebar() {
 // ═══════════════════════════════════════════
 function showSection(section) {
   state.currentSection = section;
-  document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
-  document.getElementById('section-' + section)?.classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  document
+    .querySelectorAll(".section-view")
+    .forEach((el) => el.classList.remove("active"));
+  document.getElementById("section-" + section)?.classList.add("active");
+  document
+    .querySelectorAll(".nav-btn")
+    .forEach((b) => b.classList.remove("active"));
+  event.currentTarget.classList.add("active");
 
-  const tabsEl = document.getElementById('main-tabs');
-  if (section === 'compras') {
-    tabsEl.style.display = 'flex';
+  const tabsEl = document.getElementById("main-tabs");
+  if (section === "compras") {
+    tabsEl.style.display = "flex";
     switchTab(state.currentTab);
   } else {
-    tabsEl.style.display = 'none';
+    tabsEl.style.display = "none";
   }
 
   renderAll();
@@ -531,16 +552,22 @@ function showSection(section) {
 
 function switchTab(tab) {
   state.currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
-  event?.currentTarget?.classList.add('active');
-  document.getElementById('tab-' + tab)?.style && (document.getElementById('tab-' + tab).style.display = 'flex');
-  document.getElementById('tab-' + tab)?.style && (document.getElementById('tab-' + tab).style.flexDirection = 'column');
-  document.getElementById('tab-' + tab).style.display = 'block';
+  document
+    .querySelectorAll(".tab")
+    .forEach((t) => t.classList.remove("active"));
+  document
+    .querySelectorAll(".tab-panel")
+    .forEach((p) => (p.style.display = "none"));
+  event?.currentTarget?.classList.add("active");
+  document.getElementById("tab-" + tab)?.style &&
+    (document.getElementById("tab-" + tab).style.display = "flex");
+  document.getElementById("tab-" + tab)?.style &&
+    (document.getElementById("tab-" + tab).style.flexDirection = "column");
+  document.getElementById("tab-" + tab).style.display = "block";
 
   // Highlight correct tab button
-  document.querySelectorAll('.tab').forEach(btn => {
-    if (btn.getAttribute('onclick')?.includes(tab)) btn.classList.add('active');
+  document.querySelectorAll(".tab").forEach((btn) => {
+    if (btn.getAttribute("onclick")?.includes(tab)) btn.classList.add("active");
   });
 }
 
@@ -548,39 +575,51 @@ function switchTab(tab) {
 // MODALS
 // ═══════════════════════════════════════════
 function openModal(type) {
-  const overlay = document.getElementById('modal-overlay');
-  const box = document.getElementById('modal-box');
+  const overlay = document.getElementById("modal-overlay");
+  const box = document.getElementById("modal-box");
 
-  if (type === 'compra') box.innerHTML = modalCompra();
-  else if (type === 'cartao') box.innerHTML = modalCartao();
-  else if (type === 'pessoa') box.innerHTML = modalPessoa();
-  else if (type === 'categoria') box.innerHTML = modalCategoria();
+  if (type === "compra") box.innerHTML = modalCompra();
+  else if (type === "cartao") box.innerHTML = modalCartao();
+  else if (type === "pessoa") box.innerHTML = modalPessoa();
+  else if (type === "categoria") box.innerHTML = modalCategoria();
 
-  overlay.classList.add('open');
+  overlay.classList.add("open");
 
   // Init checkboxes
-  document.querySelectorAll('.checkbox-label').forEach(lbl => {
-    const cb = lbl.querySelector('input[type=checkbox]');
+  document.querySelectorAll(".checkbox-label").forEach((lbl) => {
+    const cb = lbl.querySelector("input[type=checkbox]");
     if (cb) {
-      cb.addEventListener('change', () => lbl.classList.toggle('checked', cb.checked));
+      cb.addEventListener("change", () =>
+        lbl.classList.toggle("checked", cb.checked),
+      );
     }
   });
 }
 
 function closeModal() {
-  document.getElementById('modal-overlay').classList.remove('open');
+  document.getElementById("modal-overlay").classList.remove("open");
 }
-function closeModalOutside(e) { if (e.target.id === 'modal-overlay') closeModal(); }
+function closeModalOutside(e) {
+  if (e.target.id === "modal-overlay") closeModal();
+}
 
 function modalCompra() {
-  const cartoesOpts = state.cartoes.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
-  const catOpts = state.categorias.map(c => `<option value="${c.id}">${c.emoji} ${c.nome}</option>`).join('');
-  const pessoasCheck = state.pessoas.map(p => `
+  const cartoesOpts = state.cartoes
+    .map((c) => `<option value="${c.id}">${c.nome}</option>`)
+    .join("");
+  const catOpts = state.categorias
+    .map((c) => `<option value="${c.id}">${c.emoji} ${c.nome}</option>`)
+    .join("");
+  const pessoasCheck = state.pessoas
+    .map(
+      (p) => `
     <label class="checkbox-label">
       <input type="checkbox" name="pessoas" value="${p.id}">
       <span class="person-avatar" style="background:${p.cor};color:#000;width:18px;height:18px;font-size:9px;margin:0;">${p.nome[0]}</span>
       ${p.nome}
-    </label>`).join('');
+    </label>`,
+    )
+    .join("");
 
   return `<div class="modal-title">Nova Compra</div>
     <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Mercado, Netflix..."></div>
@@ -589,7 +628,7 @@ function modalCompra() {
       <div class="form-group"><label>Nº de Parcelas</label><input id="f-parcelas" type="number" min="1" value="1" placeholder="1"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Data da Compra</label><input id="f-data" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-group"><label>Data da Compra</label><input id="f-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
       <div class="form-group"><label>Cartão</label><select id="f-cartao">${cartoesOpts}</select></div>
     </div>
     <div class="form-group"><label>Categoria <span style="color:var(--accent3)">*única</span></label><select id="f-cat">${catOpts}</select></div>
@@ -644,103 +683,173 @@ function modalCategoria() {
 }
 
 // ═══════════════════════════════════════════
-// SAVE FUNCTIONS
+// SAVE FUNCTIONS (chamam a API)
 // ═══════════════════════════════════════════
-function saveCompra() {
-  const desc = document.getElementById('f-desc').value.trim();
-  const valor = parseFloat(document.getElementById('f-valor').value);
-  const parcelas = parseInt(document.getElementById('f-parcelas').value) || 1;
-  const data = document.getElementById('f-data').value;
-  const cartaoId = parseInt(document.getElementById('f-cartao').value);
-  const catId = parseInt(document.getElementById('f-cat').value);
-  const pessoaIds = [...document.querySelectorAll('input[name=pessoas]:checked')].map(cb => parseInt(cb.value));
+async function saveCompra() {
+  const desc = document.getElementById("f-desc").value.trim();
+  const valor = parseFloat(document.getElementById("f-valor").value);
+  const parcelas = parseInt(document.getElementById("f-parcelas").value) || 1;
+  const data = document.getElementById("f-data").value;
+  const cartaoId = parseInt(document.getElementById("f-cartao").value);
+  const catId = parseInt(document.getElementById("f-cat").value);
+  const pessoaIds = [
+    ...document.querySelectorAll("input[name=pessoas]:checked"),
+  ].map((cb) => parseInt(cb.value));
 
   if (!desc || isNaN(valor) || !data || !cartaoId || !catId) {
-    toast('Preencha todos os campos obrigatórios', false); return;
+    toast("Preencha todos os campos obrigatórios", false);
+    return;
   }
-  if (pessoaIds.length === 0) { toast('Selecione ao menos uma pessoa', false); return; }
+  if (pessoaIds.length === 0) {
+    toast("Selecione ao menos uma pessoa", false);
+    return;
+  }
 
-  state.compras.push({
-    id: state.nextCompraId++,
-    descricao: desc,
-    valor,
-    parcelas,
-    parcelaAtual: 1,
-    dataCompra: data,
-    cartaoId,
-    pessoaIds,
-    categoriaId: catId
-  });
-
-  closeModal();
-  saveState();
-  renderAll();
-  toast('Compra adicionada!', true);
+  try {
+    await apiFetch("/api/compras", {
+      method: "POST",
+      body: JSON.stringify({
+        descricao: desc,
+        valor,
+        parcelas,
+        dataCompra: data,
+        cartaoId,
+        categoriaId: catId,
+        pessoaIds,
+      }),
+    });
+    closeModal();
+    await loadState();
+    renderAll();
+    toast("Compra adicionada!", true);
+  } catch (e) {
+    toast("Erro ao salvar compra: " + e.message, false);
+  }
 }
 
-function saveCartao() {
-  const nome = document.getElementById('f-nome').value.trim();
-  const bandeira = document.getElementById('f-bandeira').value;
-  const limite = parseFloat(document.getElementById('f-limite').value) || 0;
-  const cor = document.getElementById('f-cor').value;
-  const fechamento = parseInt(document.getElementById('f-fech').value) || 10;
-  const vencimento = parseInt(document.getElementById('f-venc').value) || 17;
-  if (!nome) { toast('Informe o nome do cartão', false); return; }
-  state.cartoes.push({ id: state.nextCartaoId++, nome, bandeira, limite, cor, fechamento, vencimento });
-  closeModal(); saveState(); renderAll(); toast('Cartão adicionado!', true);
+async function saveCartao() {
+  const nome = document.getElementById("f-nome").value.trim();
+  const bandeira = document.getElementById("f-bandeira").value;
+  const limite = parseFloat(document.getElementById("f-limite").value) || 0;
+  const cor = document.getElementById("f-cor").value;
+  const fechamento = parseInt(document.getElementById("f-fech").value) || 10;
+  const vencimento = parseInt(document.getElementById("f-venc").value) || 17;
+
+  if (!nome) {
+    toast("Informe o nome do cartão", false);
+    return;
+  }
+
+  try {
+    await apiFetch("/api/cartoes", {
+      method: "POST",
+      body: JSON.stringify({
+        nome,
+        bandeira,
+        limite,
+        cor,
+        fechamento,
+        vencimento,
+      }),
+    });
+    closeModal();
+    await loadState();
+    renderAll();
+    toast("Cartão adicionado!", true);
+  } catch (e) {
+    toast("Erro ao salvar cartão: " + e.message, false);
+  }
 }
 
-function savePessoa() {
-  const nome = document.getElementById('f-nome').value.trim();
-  const cor = document.getElementById('f-cor').value;
-  if (!nome) { toast('Informe o nome', false); return; }
-  state.pessoas.push({ id: state.nextPessoaId++, nome, cor });
-  closeModal(); saveState(); renderAll(); toast('Pessoa adicionada!', true);
+async function savePessoa() {
+  const nome = document.getElementById("f-nome").value.trim();
+  const cor = document.getElementById("f-cor").value;
+
+  if (!nome) {
+    toast("Informe o nome", false);
+    return;
+  }
+
+  try {
+    await apiFetch("/api/pessoas", {
+      method: "POST",
+      body: JSON.stringify({ nome, cor }),
+    });
+    closeModal();
+    await loadState();
+    renderAll();
+    toast("Pessoa adicionada!", true);
+  } catch (e) {
+    toast("Erro ao salvar pessoa: " + e.message, false);
+  }
 }
 
-function saveCategoria() {
-  const nome = document.getElementById('f-nome').value.trim();
-  const emoji = document.getElementById('f-emoji').value.trim() || '📦';
-  const cor = document.getElementById('f-cor').value;
-  if (!nome) { toast('Informe o nome', false); return; }
-  state.categorias.push({ id: state.nextCategoriaId++, nome, emoji, cor });
-  closeModal(); saveState(); renderAll(); toast('Categoria adicionada!', true);
+async function saveCategoria() {
+  const nome = document.getElementById("f-nome").value.trim();
+  const emoji = document.getElementById("f-emoji").value.trim() || "📦";
+  const cor = document.getElementById("f-cor").value;
+
+  if (!nome) {
+    toast("Informe o nome", false);
+    return;
+  }
+
+  try {
+    await apiFetch("/api/categorias", {
+      method: "POST",
+      body: JSON.stringify({ nome, emoji, cor }),
+    });
+    closeModal();
+    await loadState();
+    renderAll();
+    toast("Categoria adicionada!", true);
+  } catch (e) {
+    toast("Erro ao salvar categoria: " + e.message, false);
+  }
 }
 
 // ═══════════════════════════════════════════
-// DELETE
+// DELETE (chamam a API)
 // ═══════════════════════════════════════════
-function deleteCompra(id) {
-  state.compras = state.compras.filter(c => c.id !== id);
-  saveState();
-  renderAll(); toast('Compra removida', true);
+async function deleteCompra(id) {
+  try {
+    await apiFetch(`/api/compras/${id}`, { method: "DELETE" });
+    await loadState();
+    renderAll();
+    toast("Compra removida", true);
+  } catch (e) {
+    toast("Erro ao remover compra: " + e.message, false);
+  }
 }
 
-function deleteItem(type, id) {
-  if (type === 'cartao') {
-    const inUse = state.compras.some(c => c.cartaoId === id);
-    if (inUse) { toast('Cartão em uso em compras', false); return; }
-    state.cartoes = state.cartoes.filter(c => c.id !== id);
-  } else if (type === 'pessoa') {
-    state.pessoas = state.pessoas.filter(p => p.id !== id);
-    state.compras.forEach(c => { c.pessoaIds = c.pessoaIds.filter(pid => pid !== id); });
-  } else if (type === 'categoria') {
-    const inUse = state.compras.some(c => c.categoriaId === id);
-    if (inUse) { toast('Categoria em uso em compras', false); return; }
-    state.categorias = state.categorias.filter(c => c.id !== id);
+async function deleteItem(type, id) {
+  const rotas = {
+    cartao: "cartoes",
+    pessoa: "pessoas",
+    categoria: "categorias",
+  };
+  const rota = rotas[type];
+  if (!rota) return;
+
+  try {
+    await apiFetch(`/api/${rota}/${id}`, { method: "DELETE" });
+    await loadState();
+    renderAll();
+    toast("Removido com sucesso", true);
+  } catch (e) {
+    // A API retorna 409 Conflict se o item está em uso
+    toast(e.message || "Erro ao remover", false);
   }
-  saveState();
-  renderAll(); toast('Removido com sucesso', true);
 }
 
 // ═══════════════════════════════════════════
 // TOAST
 // ═══════════════════════════════════════════
 function toast(msg, success) {
-  const el = document.getElementById('toast');
+  const el = document.getElementById("toast");
   el.textContent = msg;
-  el.className = 'toast show' + (success ? ' success' : '');
-  setTimeout(() => el.classList.remove('show'), 2400);
+  el.className = "toast show" + (success ? " success" : "");
+  setTimeout(() => el.classList.remove("show"), 2400);
 }
 
 // ═══════════════════════════════════════════
@@ -749,13 +858,14 @@ function toast(msg, success) {
 function renderAll() {
   renderMonthStrip();
   renderSidebar();
-  if (state.currentSection === 'dashboard') renderDashboard();
-  else if (state.currentSection === 'compras') renderComprasSection();
-  else if (state.currentSection === 'cartoes') renderCartoes();
-  else if (state.currentSection === 'pessoas') renderPessoas();
-  else if (state.currentSection === 'categorias') renderCategorias();
+  if (state.currentSection === "dashboard") renderDashboard();
+  else if (state.currentSection === "compras") renderComprasSection();
+  else if (state.currentSection === "cartoes") renderCartoes();
+  else if (state.currentSection === "pessoas") renderPessoas();
+  else if (state.currentSection === "categorias") renderCategorias();
 }
 
-// Init
-loadState();
-renderAll();
+// ═══════════════════════════════════════════
+// INIT — carrega dados da API e renderiza
+// ═══════════════════════════════════════════
+loadState().then(() => renderAll());

@@ -1,0 +1,9 @@
+  Determinando os projetos a serem restaurados...
+  C:\git\pessoal\projeto-finfamilia\backend\FinFamilia.Api\FinFamilia.Api.csproj restaurado (em 428 ms).
+  FinFamilia.Api -> C:\git\pessoal\projeto-finfamilia\backend\FinFamilia.Api\bin\Debug\net10.0\FinFamilia.Api.dll
+
+Compilação com êxito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.37
