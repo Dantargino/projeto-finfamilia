@@ -1,164 +1,202 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FinFamília — Controle de Cartões</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
-</head>
-<body>
-
-<div class="app">
-
-  <!-- NAVBAR (era sidebar) -->
-  <nav class="navbar">
-    <div class="logo">
-      <h1>Fin<span>Família</span></h1>
-      <!-- <p>Controle de Cartões</p> -->
-    </div>
-
-    <div class="nav-menu">
-      <button class="nav-btn active" onclick="showSection('dashboard')">
-        <span class="icon">📊</span> Dashboard
-      </button>
-      <button class="nav-btn" onclick="showSection('compras')">
-        <span class="icon">🛒</span> Compras
-      </button>
-      <button class="nav-btn" onclick="showSection('cartoes')">
-        <span class="icon">💳</span> Cartões
-      </button>
-      <button class="nav-btn" onclick="showSection('pessoas')">
-        <span class="icon">👥</span> Pessoas
-      </button>
-      <button class="nav-btn" onclick="showSection('categorias')">
-        <span class="icon">🏷️</span> Categorias
-      </button>
-    </div>
-
-    <!-- Mini resumo cartões -->
-    <div class="navbar-cards">
-      <div class="nav-label">Cartões</div>
-      <div id="sidebar-cards"></div>
-    </div>
-  </nav>
-
-  <!-- APP BODY: sidebar de meses + main -->
-  <div class="app-body">
-
-    <!-- SIDEBAR DE MESES (era month-strip) -->
-    <aside class="sidebar">
-      <div class="sidebar-title">Meses</div>
-      <div class="month-list" id="month-strip"></div>
-    </aside>
-
-    <!-- MAIN -->
-    <main class="main">
-
-      <!-- TABS -->
-      <div class="tabs" id="main-tabs" style="display:none;">
-        <button class="tab active" onclick="switchTab('gastos')">Gastos do Mês</button>
-        <button class="tab" onclick="switchTab('parcelados')">Parcelas Futuras</button>
-        <button class="tab" onclick="switchTab('categorias-tab')">Por Categoria</button>
-      </div>
-
-      <!-- CONTENT -->
-      <div class="content">
-
-        <!-- DASHBOARD -->
-        <div class="section-view active" id="section-dashboard">
-          <div class="summary-grid" id="summary-grid"></div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-            <div class="chart-area">
-              <div class="chart-title">Evolução Mensal</div>
-              <div class="bar-chart" id="bar-chart"></div>
-            </div>
-            <div class="chart-area">
-              <div class="chart-title">Por Categoria — <span id="cat-chart-month" style="color:var(--accent);font-size:12px;"></span></div>
-              <div class="cat-list" id="cat-chart"></div>
-            </div>
-          </div>
-          <div class="table-card">
-            <div class="table-header">
-              <div class="table-title">Últimas Compras</div>
-              <button class="btn btn-accent" onclick="openModal('compra')">+ Nova Compra</button>
-            </div>
-            <div id="recent-table-wrap"></div>
-          </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FinFamília — Controle de Cartões</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- NAVBAR (era sidebar) -->
+      <nav class="navbar">
+        <div class="logo">
+          <h1>Fin<span>Família</span></h1>
+          <!-- <p>Controle de Cartões</p> -->
         </div>
 
-        <!-- COMPRAS -->
-        <div class="section-view" id="section-compras">
-          <div id="tab-gastos" class="tab-panel">
-            <div class="table-card">
-              <div class="table-header">
-                <div class="table-title" id="compras-title">Compras</div>
-                <button class="btn btn-accent" onclick="openModal('compra')">+ Nova Compra</button>
+        <div class="nav-menu">
+          <button class="nav-btn active" onclick="showSection('dashboard')">
+            <span class="icon">📊</span> Dashboard
+          </button>
+          <button class="nav-btn" onclick="showSection('compras')">
+            <span class="icon">🛒</span> Compras
+          </button>
+          <button class="nav-btn" onclick="showSection('cartoes')">
+            <span class="icon">💳</span> Cartões
+          </button>
+          <button class="nav-btn" onclick="showSection('pessoas')">
+            <span class="icon">👥</span> Pessoas
+          </button>
+          <button class="nav-btn" onclick="showSection('categorias')">
+            <span class="icon">🏷️</span> Categorias
+          </button>
+        </div>
+
+        <!-- Mini resumo cartões -->
+        <div class="navbar-cards">
+          <div class="nav-label">Cartões</div>
+          <div id="sidebar-cards"></div>
+        </div>
+      </nav>
+
+      <!-- APP BODY: sidebar de meses + main -->
+      <div class="app-body">
+        <!-- SIDEBAR DE MESES (era month-strip) -->
+        <aside class="sidebar">
+          <div class="sidebar-title">Meses</div>
+          <div class="month-list" id="month-strip"></div>
+        </aside>
+
+        <!-- MAIN -->
+        <main class="main">
+          <!-- TABS -->
+          <div class="tabs" id="main-tabs" style="display: none">
+            <button class="tab active" onclick="switchTab('gastos')">
+              Gastos do Mês
+            </button>
+            <button class="tab" onclick="switchTab('parcelados')">
+              Parcelas Futuras
+            </button>
+            <button class="tab" onclick="switchTab('categorias-tab')">
+              Por Categoria
+            </button>
+          </div>
+
+          <!-- CONTENT -->
+          <div class="content">
+            <!-- DASHBOARD -->
+            <div class="section-view active" id="section-dashboard">
+              <div class="summary-grid" id="summary-grid"></div>
+              <div
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px"
+              >
+                <div class="chart-area">
+                  <div class="chart-title">Evolução Mensal</div>
+                  <div class="bar-chart" id="bar-chart"></div>
+                </div>
+                <div class="chart-area">
+                  <div class="chart-title">
+                    Por Categoria —
+                    <span
+                      id="cat-chart-month"
+                      style="color: var(--accent); font-size: 12px"
+                    ></span>
+                  </div>
+                  <div class="cat-list" id="cat-chart"></div>
+                </div>
               </div>
-              <div id="compras-table-wrap"></div>
-            </div>
-          </div>
-          <div id="tab-parcelados" class="tab-panel" style="display:none;">
-            <div class="table-card">
-              <div class="table-header">
-                <div class="table-title">Parcelas Vindouras</div>
+              <div class="table-card">
+                <div class="table-header">
+                  <div class="table-title">Últimas Compras</div>
+                  <button class="btn btn-accent" onclick="openModal('compra')">
+                    + Nova Compra
+                  </button>
+                </div>
+                <div id="recent-table-wrap"></div>
               </div>
-              <div id="parcelas-table-wrap"></div>
             </div>
-          </div>
-          <div id="tab-categorias-tab" class="tab-panel" style="display:none;">
-            <div class="chart-area">
-              <div class="chart-title">Gastos por Categoria</div>
-              <div class="cat-list" id="cat-chart2"></div>
-            </div>
-          </div>
-        </div>
 
-        <!-- CARTÕES -->
-        <div class="section-view" id="section-cartoes">
-          <div class="table-card">
-            <div class="table-header">
-              <div class="table-title">Cartões de Crédito</div>
-              <button class="btn btn-accent" onclick="openModal('cartao')">+ Novo Cartão</button>
+            <!-- COMPRAS -->
+            <div class="section-view" id="section-compras">
+              <div id="tab-gastos" class="tab-panel">
+                <div class="table-card">
+                  <div class="table-header">
+                    <div class="table-title" id="compras-title">Compras</div>
+                    <button
+                      class="btn btn-accent"
+                      onclick="openModal('compra')"
+                    >
+                      + Nova Compra
+                    </button>
+                  </div>
+                  <div id="compras-table-wrap"></div>
+                </div>
+              </div>
+              <div id="tab-parcelados" class="tab-panel" style="display: none">
+                <div class="table-card">
+                  <div class="table-header">
+                    <div class="table-title">Parcelas Vindouras</div>
+                  </div>
+                  <div id="parcelas-table-wrap"></div>
+                </div>
+              </div>
+              <div
+                id="tab-categorias-tab"
+                class="tab-panel"
+                style="display: none"
+              >
+                <div class="chart-area">
+                  <div class="chart-title">Gastos por Categoria</div>
+                  <div class="cat-list" id="cat-chart2"></div>
+                </div>
+              </div>
             </div>
-            <div id="cartoes-list" style="padding:12px;"></div>
-          </div>
-        </div>
 
-        <!-- PESSOAS -->
-        <div class="section-view" id="section-pessoas">
-          <div class="table-card">
-            <div class="table-header">
-              <div class="table-title">Pessoas da Família</div>
-              <button class="btn btn-accent" onclick="openModal('pessoa')">+ Nova Pessoa</button>
+            <!-- CARTÕES -->
+            <div class="section-view" id="section-cartoes">
+              <div class="summary-grid" id="cartoes-summary"></div>
+              <div class="table-card">
+                <div class="table-header">
+                  <div class="table-title">Cartões de Crédito</div>
+                  <button class="btn btn-accent" onclick="openModal('cartao')">
+                    + Novo Cartão
+                  </button>
+                </div>
+                <div id="cartoes-list" style="padding: 12px"></div>
+              </div>
             </div>
-            <div id="pessoas-list" style="padding:12px;"></div>
-          </div>
-        </div>
 
-        <!-- CATEGORIAS -->
-        <div class="section-view" id="section-categorias">
-          <div class="table-card">
-            <div class="table-header">
-              <div class="table-title">Categorias de Gasto</div>
-              <button class="btn btn-accent" onclick="openModal('categoria')">+ Nova Categoria</button>
+            <!-- PESSOAS -->
+            <div class="section-view" id="section-pessoas">
+              <div class="summary-grid" id="pessoas-summary"></div>
+              <div class="table-card">
+                <div class="table-header">
+                  <div class="table-title">Pessoas da Família</div>
+                  <button class="btn btn-accent" onclick="openModal('pessoa')">
+                    + Nova Pessoa
+                  </button>
+                </div>
+                <div id="pessoas-list" style="padding: 12px"></div>
+              </div>
             </div>
-            <div id="categorias-list" style="padding:12px;"></div>
-          </div>
-        </div>
 
+            <!-- CATEGORIAS -->
+            <div class="section-view" id="section-categorias">
+              <div class="summary-grid" id="categorias-summary"></div>
+              <div class="table-card">
+                <div class="table-header">
+                  <div class="table-title">Categorias de Gasto</div>
+                  <button
+                    class="btn btn-accent"
+                    onclick="openModal('categoria')"
+                  >
+                    + Nova Categoria
+                  </button>
+                </div>
+                <div id="categorias-list" style="padding: 12px"></div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
-    </main>
-  </div>
-</div>
+    </div>
 
-<!-- MODALS -->
-<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
-  <div class="modal" id="modal-box"></div>
-</div>
+    <!-- MODALS -->
+    <div
+      class="modal-overlay"
+      id="modal-overlay"
+      onclick="closeModalOutside(event)"
+    >
+      <div class="modal" id="modal-box"></div>
+    </div>
 
-<div class="toast" id="toast"></div>
+    <div class="toast" id="toast"></div>
 
-<script src="script.js"></script>
-</body>
+    <script src="script.js"></script>
+  </body>
 </html>

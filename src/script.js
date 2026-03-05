@@ -417,37 +417,105 @@ function renderComprasSection() {
 // ═══════════════════════════════════════════
 function renderCartoes() {
   const m = state.selectedMonth || nowMonth();
+  
+  // Resumo
+  const totalLimite = state.cartoes.reduce((s, c) => s + c.limite, 0);
+  const totalFaturas = state.cartoes.reduce((s, c) => {
+    return s + getFaturaEntries(m, c.id).reduce((acc, e) => acc + e.valorParcela, 0);
+  }, 0);
+  
+  const getOcupado = (cartaoId) => {
+     let ocupado = 0;
+     state.compras.forEach(c => {
+       if (c.cartaoId !== cartaoId) return;
+       for (let p = 0; p < c.parcelas; p++) {
+         const dt = addMonths(c.dataCompra, p).slice(0, 7);
+         if (dt >= m) {
+           ocupado += (c.valor / c.parcelas);
+         }
+       }
+     });
+     return ocupado;
+  };
+
+  const totalOcupado = state.cartoes.reduce((s, c) => s + getOcupado(c.id), 0);
+  
+  const summaryEl = document.getElementById("cartoes-summary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div class="summary-card purple">
+        <div class="s-label">Limite Total (Todos cartões)</div>
+        <div class="s-value">${fmt(totalLimite)}</div>
+        <div class="s-sub">${state.cartoes.length} cartões cadastrados</div>
+      </div>
+      <div class="summary-card yellow">
+        <div class="s-label">Total Faturas em ${fmtMonth(m)}</div>
+        <div class="s-value">${fmt(totalFaturas)}</div>
+        <div class="s-sub">Soma das faturas no mês selecionado</div>
+      </div>
+      <div class="summary-card cyan">
+        <div class="s-label">Limite Ocupado Estimado</div>
+        <div class="s-value">${fmt(totalOcupado)}</div>
+        <div class="s-sub">Faturas do mês atual em diante</div>
+      </div>
+    `;
+  }
+
   document.getElementById("cartoes-list").innerHTML =
     state.cartoes.length === 0
       ? `<div class="empty"><div class="e-icon">💳</div><p>Nenhum cartão cadastrado</p></div>`
-      : state.cartoes
-          .map((c) => {
-            const total = getFaturaEntries(m, c.id).reduce(
-              (s, e) => s + e.valorParcela,
-              0,
-            );
-            const pct = (total / c.limite) * 100;
-            return `<div class="list-item">
-          <div class="list-item-info">
-            <div class="color-swatch" style="background:${c.cor}; width:18px;height:18px;border-radius:4px;"></div>
-            <div>
-              <div style="font-weight:600;font-size:13px;">${c.nome} <span style="color:var(--text-muted);font-size:10px;">${c.bandeira}</span></div>
-              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Fecha dia ${c.fechamento} · Vence dia ${c.vencimento}</div>
-              <div style="margin-top:6px;">
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">
-                  <span style="color:var(--text-muted)">Usado em ${fmtMonth(m)}</span>
-                  <span>${fmt(total)} / ${fmt(c.limite)}</span>
-                </div>
-                <div style="height:4px;background:var(--surface3);border-radius:2px;width:200px;">
-                  <div style="width:${Math.min(100, pct)}%;height:100%;background:${pct > 80 ? "var(--accent3)" : pct > 50 ? "var(--accent)" : "var(--accent2)"};border-radius:2px;transition:width .5s;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <button class="btn btn-danger" onclick="deleteItem('cartao',${c.id})">Remover</button>
-        </div>`;
-          })
-          .join("");
+      : `<div style="overflow-x:auto;"><table style="width:100%;text-align:left;border-collapse:collapse;margin-top:8px;">
+           <thead>
+             <tr>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Cartão</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Limite</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Ocupado</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Saldo Disponível</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Fech. / Venc.</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);text-align:right;">Ações</th>
+             </tr>
+           </thead>
+           <tbody>
+             ` + state.cartoes.map(c => {
+               const ocupado = getOcupado(c.id);
+               const saldo = c.limite - ocupado;
+               const faturaMes = getFaturaEntries(m, c.id).reduce((s, e) => s + e.valorParcela, 0);
+               const pct = (ocupado / c.limite) * 100;
+
+               return `<tr style="border-bottom:1px solid var(--border);">
+                 <td style="padding:12px;">
+                   <div style="display:flex;align-items:center;gap:8px;">
+                     <div class="color-swatch" style="background:${c.cor}; width:16px;height:16px;border-radius:4px;"></div>
+                     <div>
+                       <div style="font-weight:600;font-size:13px;">${c.nome}</div>
+                       <div style="font-size:10px;color:var(--text-muted);">${c.bandeira}</div>
+                     </div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;font-weight:500;">${fmt(c.limite)}</td>
+                 <td style="padding:12px;">
+                   <div style="font-weight:500;">${fmt(ocupado)}</div>
+                   <div style="font-size:10px;color:var(--text-muted);">Fatura atual: ${fmt(faturaMes)}</div>
+                 </td>
+                 <td style="padding:12px;">
+                   <div style="font-weight:500;color:${saldo < 0 ? 'var(--red)' : 'inherit'}">${fmt(saldo)}</div>
+                   <div style="height:4px;background:var(--surface3);border-radius:2px;width:100px;margin-top:4px;">
+                     <div style="width:${Math.min(100, pct)}%;height:100%;background:${pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--accent)' : 'var(--accent2)'};border-radius:2px;"></div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;">
+                    <span class="badge" style="background:var(--surface3);color:var(--text);font-size:10px;">F: ${c.fechamento} <br> V: ${c.vencimento}</span>
+                 </td>
+                 <td style="padding:12px;text-align:right;">
+                   <div style="display:flex;gap:4px;justify-content:flex-end;">
+                     <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px;" onclick="editItem('cartao', ${c.id})">✏️</button>
+                     <button class="btn btn-danger" style="padding:6px 10px;font-size:11px;" onclick="safelyDelete('cartao', ${c.id})">✕</button>
+                   </div>
+                 </td>
+               </tr>`;
+             }).join("") + `
+           </tbody>
+         </table></div>`;
 }
 
 // ═══════════════════════════════════════════
@@ -455,54 +523,174 @@ function renderCartoes() {
 // ═══════════════════════════════════════════
 function renderPessoas() {
   const m = state.selectedMonth || nowMonth();
+  
+  // Dashboard / Summary
+  const pessoasData = state.pessoas.map(p => {
+    const entries = getFaturaEntries(m).filter(e => e.compra.pessoaIds.includes(p.id));
+    const total = entries.reduce((s, e) => s + (e.valorParcela / e.compra.pessoaIds.length), 0);
+    return { ...p, entriesCount: entries.length, total };
+  }).sort((a, b) => b.total - a.total);
+
+  const totalFamilia = pessoasData.reduce((s, p) => s + p.total, 0);
+
+  const summaryEl = document.getElementById("pessoas-summary");
+  if (summaryEl) {
+    if (pessoasData.length > 0) {
+      const topPessoa = pessoasData[0];
+      summaryEl.innerHTML = `
+        <div class="summary-card cyan">
+          <div class="s-label">Total Gasto pela Família (${fmtMonth(m)})</div>
+          <div class="s-value">${fmt(totalFamilia)}</div>
+          <div class="s-sub">${state.pessoas.length} membros na família</div>
+        </div>
+        <div class="summary-card purple">
+          <div class="s-label">Maior Gasto no Mês</div>
+          <div class="s-value">${topPessoa.total > 0 ? fmt(topPessoa.total) : "—"}</div>
+          <div class="s-sub">${topPessoa.total > 0 ? topPessoa.nome : "Sem gastos"}</div>
+        </div>
+        <div class="summary-card yellow">
+           <div class="s-label">Média por Pessoa</div>
+           <div class="s-value">${fmt(state.pessoas.length > 0 ? totalFamilia / state.pessoas.length : 0)}</div>
+           <div class="s-sub">Rateio aproximado</div>
+        </div>
+      `;
+    } else {
+      summaryEl.innerHTML = "";
+    }
+  }
+
+  // Tabela / Lista
   document.getElementById("pessoas-list").innerHTML =
     state.pessoas.length === 0
       ? `<div class="empty"><div class="e-icon">👥</div><p>Nenhuma pessoa cadastrada</p></div>`
-      : state.pessoas
-          .map((p) => {
-            const entries = getFaturaEntries(m).filter((e) =>
-              e.compra.pessoaIds.includes(p.id),
-            );
-            const total = entries.reduce(
-              (s, e) => s + e.valorParcela / e.compra.pessoaIds.length,
-              0,
-            );
-            return `<div class="list-item">
-          <div class="list-item-info">
-            <div class="person-avatar" style="background:${p.cor};color:#000;width:36px;height:36px;font-size:14px;margin-right:0;">${p.nome[0]}</div>
-            <div>
-              <div style="font-weight:600;font-size:13px;">${p.nome}</div>
-              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Participação em ${entries.length} compras em ${fmtMonth(m)} · ~${fmt(total)}</div>
-            </div>
-          </div>
-          <button class="btn btn-danger" onclick="deleteItem('pessoa',${p.id})">Remover</button>
-        </div>`;
-          })
-          .join("");
+      : `<div style="overflow-x:auto;"><table style="width:100%;text-align:left;border-collapse:collapse;margin-top:8px;">
+           <thead>
+             <tr>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Pessoa</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Participação (${fmtMonth(m)})</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Valor Total</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);text-align:right;">Ações</th>
+             </tr>
+           </thead>
+           <tbody>
+             ` + pessoasData.map(p => {
+               const maxTotal = pessoasData[0]?.total || 1;
+               const pct = (p.total / maxTotal) * 100;
+               return `<tr style="border-bottom:1px solid var(--border);">
+                 <td style="padding:12px;">
+                   <div style="display:flex;align-items:center;gap:12px;">
+                     <div class="person-avatar" style="background:${p.cor};color:#000;width:32px;height:32px;font-size:12px;margin:0;">${p.nome[0]}</div>
+                     <div style="font-weight:600;font-size:13px;">${p.nome}</div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;font-size:12px;color:var(--text-muted);">
+                   ${p.entriesCount} compras
+                 </td>
+                 <td style="padding:12px;">
+                   <div style="font-weight:600;">${fmt(p.total)}</div>
+                   <div style="height:4px;background:var(--surface3);border-radius:2px;width:120px;margin-top:4px;">
+                     <div style="width:${Math.min(100, pct)}%;height:100%;background:${p.cor};border-radius:2px;"></div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;text-align:right;">
+                   <div style="display:flex;gap:4px;justify-content:flex-end;">
+                     <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px;" onclick="editItem('pessoa', ${p.id})">✏️</button>
+                     <button class="btn btn-danger" style="padding:6px 10px;font-size:11px;" onclick="safelyDelete('pessoa', ${p.id})">✕</button>
+                   </div>
+                 </td>
+               </tr>`;
+             }).join("") + `
+           </tbody>
+         </table></div>`;
 }
 
 // ═══════════════════════════════════════════
 // CATEGORIAS SECTION
 // ═══════════════════════════════════════════
 function renderCategorias() {
+  const m = state.selectedMonth || nowMonth();
+  
+  // Dashboard / Summary
+  const catsData = state.categorias.map(c => {
+    const entries = getFaturaEntries(m).filter(e => e.compra.categoriaId === c.id);
+    const total = entries.reduce((s, e) => s + e.valorParcela, 0);
+    return { ...c, entriesCount: entries.length, total };
+  }).sort((a, b) => b.total - a.total);
+
+  const totalCategorias = catsData.reduce((s, c) => s + c.total, 0);
+
+  const summaryEl = document.getElementById("categorias-summary");
+  if (summaryEl) {
+    if (catsData.length > 0) {
+      const topCat = catsData[0];
+      summaryEl.innerHTML = `
+        <div class="summary-card cyan">
+          <div class="s-label">Total Gasto em Categorias (${fmtMonth(m)})</div>
+          <div class="s-value">${fmt(totalCategorias)}</div>
+          <div class="s-sub">${state.categorias.length} categorias cadastradas</div>
+        </div>
+        <div class="summary-card purple">
+          <div class="s-label">Categoria com Maior Gasto</div>
+          <div class="s-value">${topCat.total > 0 ? fmt(topCat.total) : "—"}</div>
+          <div class="s-sub">${topCat.total > 0 ? topCat.emoji + " " + topCat.nome : "Nenhum gasto"}</div>
+        </div>
+        <div class="summary-card yellow">
+           <div class="s-label">Categorias Utilizadas</div>
+           <div class="s-value">${catsData.filter(c => c.total > 0).length}</div>
+           <div class="s-sub">Com gastos no mês selecionado</div>
+        </div>
+      `;
+    } else {
+      summaryEl.innerHTML = "";
+    }
+  }
+
+  // Tabela / Lista
   document.getElementById("categorias-list").innerHTML =
     state.categorias.length === 0
       ? `<div class="empty"><div class="e-icon">🏷️</div><p>Nenhuma categoria</p></div>`
-      : state.categorias
-          .map(
-            (c) => `
-      <div class="list-item">
-        <div class="list-item-info">
-          <span style="font-size:20px;">${c.emoji}</span>
-          <div>
-            <div style="font-weight:600;font-size:13px;">${c.nome}</div>
-            <div style="font-size:10px;color:var(--text-muted);">Cor: <span style="color:${c.cor}">${c.cor}</span></div>
-          </div>
-        </div>
-        <button class="btn btn-danger" onclick="deleteItem('categoria',${c.id})">Remover</button>
-      </div>`,
-          )
-          .join("");
+      : `<div style="overflow-x:auto;"><table style="width:100%;text-align:left;border-collapse:collapse;margin-top:8px;">
+           <thead>
+             <tr>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Categoria</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Volume (${fmtMonth(m)})</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);color:var(--text-dim);font-weight:500;">Valor Total</th>
+               <th style="padding:12px;border-bottom:1px solid var(--border);text-align:right;">Ações</th>
+             </tr>
+           </thead>
+           <tbody>
+             ` + catsData.map(c => {
+               const maxTotal = catsData[0]?.total || 1;
+               const pct = (c.total / maxTotal) * 100;
+               return `<tr style="border-bottom:1px solid var(--border);">
+                 <td style="padding:12px;">
+                   <div style="display:flex;align-items:center;gap:12px;">
+                     <div style="font-size:24px;">${c.emoji}</div>
+                     <div>
+                       <div style="font-weight:600;font-size:13px;">${c.nome}</div>
+                       <div style="font-size:10px;color:var(--text-muted);">Cor: <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.cor};margin-left:4px;"></span></div>
+                     </div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;font-size:12px;color:var(--text-muted);">
+                   ${c.entriesCount} transações
+                 </td>
+                 <td style="padding:12px;">
+                   <div style="font-weight:600;">${fmt(c.total)}</div>
+                   <div style="height:4px;background:var(--surface3);border-radius:2px;width:120px;margin-top:4px;">
+                     <div style="width:${Math.min(100, pct)}%;height:100%;background:${c.cor};border-radius:2px;"></div>
+                   </div>
+                 </td>
+                 <td style="padding:12px;text-align:right;">
+                   <div style="display:flex;gap:4px;justify-content:flex-end;">
+                     <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px;" onclick="editItem('categoria', ${c.id})">✏️</button>
+                     <button class="btn btn-danger" style="padding:6px 10px;font-size:11px;" onclick="safelyDelete('categoria', ${c.id})">✕</button>
+                   </div>
+                 </td>
+               </tr>`;
+             }).join("") + `
+           </tbody>
+         </table></div>`;
 }
 
 // ═══════════════════════════════════════════
@@ -559,12 +747,11 @@ function switchTab(tab) {
     .querySelectorAll(".tab-panel")
     .forEach((p) => (p.style.display = "none"));
   event?.currentTarget?.classList.add("active");
-  document.getElementById("tab-" + tab)?.style &&
-    (document.getElementById("tab-" + tab).style.display = "flex");
-  document.getElementById("tab-" + tab)?.style &&
-    (document.getElementById("tab-" + tab).style.flexDirection = "column");
-  document.getElementById("tab-" + tab).style.display = "block";
-
+  const tabEl = document.getElementById("tab-" + tab);
+  if (tabEl) {
+    tabEl.style.display = "flex";
+    tabEl.style.flexDirection = "column";
+  }
   // Highlight correct tab button
   document.querySelectorAll(".tab").forEach((btn) => {
     if (btn.getAttribute("onclick")?.includes(tab)) btn.classList.add("active");
@@ -574,14 +761,19 @@ function switchTab(tab) {
 // ═══════════════════════════════════════════
 // MODALS
 // ═══════════════════════════════════════════
-function openModal(type) {
+function openModal(type, idToEdit = null) {
   const overlay = document.getElementById("modal-overlay");
   const box = document.getElementById("modal-box");
 
-  if (type === "compra") box.innerHTML = modalCompra();
-  else if (type === "cartao") box.innerHTML = modalCartao();
-  else if (type === "pessoa") box.innerHTML = modalPessoa();
-  else if (type === "categoria") box.innerHTML = modalCategoria();
+  if (type === "compra") box.innerHTML = modalCompra(idToEdit);
+  else if (type === "cartao") box.innerHTML = modalCartao(idToEdit);
+  else if (type === "pessoa") box.innerHTML = modalPessoa(idToEdit);
+  else if (type === "categoria") box.innerHTML = modalCategoria(idToEdit);
+  else if (type === "confirm") {
+    // modal de confirmação
+    overlay.classList.add("open");
+    return;
+  }
 
   overlay.classList.add("open");
 
@@ -603,32 +795,33 @@ function closeModalOutside(e) {
   if (e.target.id === "modal-overlay") closeModal();
 }
 
-function modalCompra() {
+function modalCompra(id = null) {
+  const compra = id ? state.compras.find(c => c.id === id) : null;
   const cartoesOpts = state.cartoes
-    .map((c) => `<option value="${c.id}">${c.nome}</option>`)
+    .map((c) => `<option value="${c.id}" ${compra && compra.cartaoId === c.id ? "selected" : ""}>${c.nome}</option>`)
     .join("");
   const catOpts = state.categorias
-    .map((c) => `<option value="${c.id}">${c.emoji} ${c.nome}</option>`)
+    .map((c) => `<option value="${c.id}" ${compra && compra.categoriaId === c.id ? "selected" : ""}>${c.emoji} ${c.nome}</option>`)
     .join("");
   const pessoasCheck = state.pessoas
     .map(
       (p) => `
     <label class="checkbox-label">
-      <input type="checkbox" name="pessoas" value="${p.id}">
+      <input type="checkbox" name="pessoas" value="${p.id}" ${compra && compra.pessoaIds.includes(p.id) ? "checked" : ""}>
       <span class="person-avatar" style="background:${p.cor};color:#000;width:18px;height:18px;font-size:9px;margin:0;">${p.nome[0]}</span>
       ${p.nome}
     </label>`,
     )
     .join("");
 
-  return `<div class="modal-title">Nova Compra</div>
-    <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Mercado, Netflix..."></div>
+  return `<div class="modal-title">${compra ? "Editar" : "Nova"} Compra</div>
+    <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Mercado, Netflix..." value="${compra ? compra.descricao : ""}"></div>
     <div class="form-row">
-      <div class="form-group"><label>Valor Total (R$)</label><input id="f-valor" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="form-group"><label>Nº de Parcelas</label><input id="f-parcelas" type="number" min="1" value="1" placeholder="1"></div>
+      <div class="form-group"><label>Valor Total (R$)</label><input id="f-valor" type="number" step="0.01" placeholder="0,00" value="${compra ? compra.valor : ""}"></div>
+      <div class="form-group"><label>Nº de Parcelas</label><input id="f-parcelas" type="number" min="1" value="${compra ? compra.parcelas : 1}" placeholder="1"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Data da Compra</label><input id="f-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="form-group"><label>Data da Compra</label><input id="f-data" type="date" value="${compra ? compra.dataCompra : new Date().toISOString().slice(0, 10)}"></div>
       <div class="form-group"><label>Cartão</label><select id="f-cartao">${cartoesOpts}</select></div>
     </div>
     <div class="form-group"><label>Categoria <span style="color:var(--accent3)">*única</span></label><select id="f-cat">${catOpts}</select></div>
@@ -636,56 +829,107 @@ function modalCompra() {
       <div class="checkbox-group">${pessoasCheck}</div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-accent" onclick="saveCompra()">Salvar Compra</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-accent" onclick="saveCompra(${id ? id : 'null'})">Salvar Compra</button>
     </div>`;
 }
 
-function modalCartao() {
-  return `<div class="modal-title">Novo Cartão</div>
-    <div class="form-group"><label>Nome do Cartão</label><input id="f-nome" placeholder="Ex: Nubank, Itaú..."></div>
+function modalCartao(id = null) {
+  const c = id ? state.cartoes.find(x => x.id === id) : null;
+  return `<div class="modal-title">${c ? "Editar" : "Novo"} Cartão</div>
+    <div class="form-group"><label>Nome do Cartão</label><input id="f-nome" placeholder="Ex: Nubank, Itaú..." value="${c ? c.nome : ""}"></div>
     <div class="form-group"><label>Bandeira</label>
-      <select id="f-bandeira"><option>Mastercard</option><option>Visa</option><option>Elo</option><option>Amex</option><option>Hipercard</option></select>
+      <select id="f-bandeira">
+        <option ${c && c.bandeira === "Mastercard" ? "selected" : ""}>Mastercard</option>
+        <option ${c && c.bandeira === "Visa" ? "selected" : ""}>Visa</option>
+        <option ${c && c.bandeira === "Elo" ? "selected" : ""}>Elo</option>
+        <option ${c && c.bandeira === "Amex" ? "selected" : ""}>Amex</option>
+        <option ${c && c.bandeira === "Hipercard" ? "selected" : ""}>Hipercard</option>
+      </select>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Limite (R$)</label><input id="f-limite" type="number" placeholder="5000"></div>
-      <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="#5af0e8" style="height:42px;width:100%;"></div>
+      <div class="form-group"><label>Limite (R$)</label><input id="f-limite" type="number" placeholder="5000" value="${c ? c.limite : ""}"></div>
+      <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="${c ? c.cor : "#5af0e8"}" style="height:42px;width:100%;"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Dia Fechamento</label><input id="f-fech" type="number" min="1" max="31" placeholder="10"></div>
-      <div class="form-group"><label>Dia Vencimento</label><input id="f-venc" type="number" min="1" max="31" placeholder="17"></div>
+      <div class="form-group"><label>Dia Fechamento</label><input id="f-fech" type="number" min="1" max="31" placeholder="10" value="${c ? c.fechamento : ""}"></div>
+      <div class="form-group"><label>Dia Vencimento</label><input id="f-venc" type="number" min="1" max="31" placeholder="17" value="${c ? c.vencimento : ""}"></div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-accent" onclick="saveCartao()">Salvar Cartão</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-accent" onclick="saveCartao(${id ? id : 'null'})">Salvar Cartão</button>
     </div>`;
 }
 
-function modalPessoa() {
-  return `<div class="modal-title">Nova Pessoa</div>
-    <div class="form-group"><label>Nome</label><input id="f-nome" placeholder="Ex: Ana, Carlos..."></div>
-    <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="#e8ff5a" style="height:42px;width:100%;"></div>
+function modalPessoa(id = null) {
+  const p = id ? state.pessoas.find(x => x.id === id) : null;
+  return `<div class="modal-title">${p ? "Editar" : "Nova"} Pessoa</div>
+    <div class="form-group"><label>Nome</label><input id="f-nome" placeholder="Ex: Ana, Carlos..." value="${p ? p.nome : ""}"></div>
+    <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="${p ? p.cor : "#e8ff5a"}" style="height:42px;width:100%;"></div>
     <div class="form-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-accent" onclick="savePessoa()">Salvar</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-accent" onclick="savePessoa(${id ? id : 'null'})">Salvar</button>
     </div>`;
 }
 
-function modalCategoria() {
-  return `<div class="modal-title">Nova Categoria</div>
-    <div class="form-group"><label>Nome</label><input id="f-nome" placeholder="Ex: Alimentação, Saúde..."></div>
-    <div class="form-group"><label>Emoji</label><input id="f-emoji" placeholder="🍔" style="font-size:20px;text-align:center;"></div>
-    <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="#f59e0b" style="height:42px;width:100%;"></div>
+function modalCategoria(id = null) {
+  const c = id ? state.categorias.find(x => x.id === id) : null;
+  return `<div class="modal-title">${c ? "Editar" : "Nova"} Categoria</div>
+    <div class="form-group"><label>Nome</label><input id="f-nome" placeholder="Ex: Alimentação, Saúde..." value="${c ? c.nome : ""}"></div>
+    <div class="form-group"><label>Emoji</label><input id="f-emoji" placeholder="🍔" style="font-size:20px;text-align:center;" value="${c ? c.emoji : ""}"></div>
+    <div class="form-group"><label>Cor</label><input id="f-cor" type="color" value="${c ? c.cor : "#f59e0b"}" style="height:42px;width:100%;"></div>
     <div class="form-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-accent" onclick="saveCategoria()">Salvar</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-accent" onclick="saveCategoria(${id ? id : 'null'})">Salvar</button>
     </div>`;
 }
+
+// ═══════════════════════════════════════════
+// VALIDAÇÃO & SEGURANÇA (Regras 7 e 8)
+// ═══════════════════════════════════════════
+function checkTies(type, id) {
+  if (type === "cartao") {
+    return state.compras.some(c => c.cartaoId === id);
+  } else if (type === "pessoa") {
+    return state.compras.some(c => c.pessoaIds.includes(id));
+  } else if (type === "categoria") {
+    return state.compras.some(c => c.categoriaId === id);
+  }
+  return false;
+}
+
+function editItem(type, id) {
+  if (checkTies(type, id)) {
+    toast("Atenção: Este item possui compras vinculadas. Você pode alterar nome / cor, mas tenha cuidado.", false);
+  }
+  openModal(type, id);
+}
+
+function safelyDelete(type, id, skipCheck = false) {
+  if (!skipCheck && type !== "compra" && checkTies(type, id)) {
+    toast("Ação bloqueada: Há gastos vinculados a este item.", false);
+    return;
+  }
+  
+  const rotulo = type === "compra" ? "esta compra" : type === "cartao" ? "este cartão" : type === "pessoa" ? "esta pessoa" : "esta categoria";
+  const box = document.getElementById("modal-box");
+  box.innerHTML = `
+    <div class="modal-title" style="color:var(--red);">Confirmar Exclusão</div>
+    <p style="margin-bottom:24px;">Tem certeza que deseja excluir ${rotulo}? Esta ação não pode ser desfeita.</p>
+    <div class="form-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-danger" onclick="${type === 'compra' ? `deleteCompra(${id})` : `deleteItem('${type}', ${id})`}">Sim, excluir</button>
+    </div>
+  `;
+  openModal("confirm");
+}
+
+
 
 // ═══════════════════════════════════════════
 // SAVE FUNCTIONS (chamam a API)
 // ═══════════════════════════════════════════
-async function saveCompra() {
+async function saveCompra(id = null) {
   const desc = document.getElementById("f-desc").value.trim();
   const valor = parseFloat(document.getElementById("f-valor").value);
   const parcelas = parseInt(document.getElementById("f-parcelas").value) || 1;
@@ -706,8 +950,10 @@ async function saveCompra() {
   }
 
   try {
-    await apiFetch("/api/compras", {
-      method: "POST",
+    const method = id ? "PUT" : "POST";
+    const path = id ? `/api/compras/${id}` : "/api/compras";
+    await apiFetch(path, {
+      method,
       body: JSON.stringify({
         descricao: desc,
         valor,
@@ -721,13 +967,13 @@ async function saveCompra() {
     closeModal();
     await loadState();
     renderAll();
-    toast("Compra adicionada!", true);
+    toast(id ? "Compra atualizada!" : "Compra adicionada!", true);
   } catch (e) {
     toast("Erro ao salvar compra: " + e.message, false);
   }
 }
 
-async function saveCartao() {
+async function saveCartao(id = null) {
   const nome = document.getElementById("f-nome").value.trim();
   const bandeira = document.getElementById("f-bandeira").value;
   const limite = parseFloat(document.getElementById("f-limite").value) || 0;
@@ -741,8 +987,10 @@ async function saveCartao() {
   }
 
   try {
-    await apiFetch("/api/cartoes", {
-      method: "POST",
+    const method = id ? "PUT" : "POST";
+    const path = id ? `/api/cartoes/${id}` : "/api/cartoes";
+    await apiFetch(path, {
+      method,
       body: JSON.stringify({
         nome,
         bandeira,
@@ -755,13 +1003,13 @@ async function saveCartao() {
     closeModal();
     await loadState();
     renderAll();
-    toast("Cartão adicionado!", true);
+    toast(id ? "Cartão atualizado!" : "Cartão adicionado!", true);
   } catch (e) {
     toast("Erro ao salvar cartão: " + e.message, false);
   }
 }
 
-async function savePessoa() {
+async function savePessoa(id = null) {
   const nome = document.getElementById("f-nome").value.trim();
   const cor = document.getElementById("f-cor").value;
 
@@ -771,20 +1019,22 @@ async function savePessoa() {
   }
 
   try {
-    await apiFetch("/api/pessoas", {
-      method: "POST",
+    const method = id ? "PUT" : "POST";
+    const path = id ? `/api/pessoas/${id}` : "/api/pessoas";
+    await apiFetch(path, {
+      method,
       body: JSON.stringify({ nome, cor }),
     });
     closeModal();
     await loadState();
     renderAll();
-    toast("Pessoa adicionada!", true);
+    toast(id ? "Pessoa atualizada!" : "Pessoa adicionada!", true);
   } catch (e) {
     toast("Erro ao salvar pessoa: " + e.message, false);
   }
 }
 
-async function saveCategoria() {
+async function saveCategoria(id = null) {
   const nome = document.getElementById("f-nome").value.trim();
   const emoji = document.getElementById("f-emoji").value.trim() || "📦";
   const cor = document.getElementById("f-cor").value;
@@ -795,14 +1045,16 @@ async function saveCategoria() {
   }
 
   try {
-    await apiFetch("/api/categorias", {
-      method: "POST",
+    const method = id ? "PUT" : "POST";
+    const path = id ? `/api/categorias/${id}` : "/api/categorias";
+    await apiFetch(path, {
+      method,
       body: JSON.stringify({ nome, emoji, cor }),
     });
     closeModal();
     await loadState();
     renderAll();
-    toast("Categoria adicionada!", true);
+    toast(id ? "Categoria atualizada!" : "Categoria adicionada!", true);
   } catch (e) {
     toast("Erro ao salvar categoria: " + e.message, false);
   }
@@ -858,6 +1110,23 @@ function toast(msg, success) {
 function renderAll() {
   renderMonthStrip();
   renderSidebar();
+
+  // Garante que a seção correta fique visível
+  document.querySelectorAll(".section-view").forEach(el => el.classList.remove("active"));
+  const activeSection = document.getElementById("section-" + state.currentSection);
+  if (activeSection) activeSection.classList.add("active");
+
+  // Destaca o botão de navegação correto
+  document.querySelectorAll(".nav-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("onclick")?.includes(state.currentSection));
+  });
+
+  // Exibe/oculta tabs de compras
+  const tabsEl = document.getElementById("main-tabs");
+  if (tabsEl) {
+    tabsEl.style.display = state.currentSection === "compras" ? "flex" : "none";
+  }
+
   if (state.currentSection === "dashboard") renderDashboard();
   else if (state.currentSection === "compras") renderComprasSection();
   else if (state.currentSection === "cartoes") renderCartoes();

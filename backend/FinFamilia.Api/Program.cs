@@ -20,6 +20,21 @@ builder.Services.AddCors(opt =>
 var app = builder.Build();
 
 app.UseCors();
+
+// Serve o frontend (pasta src/) em http://localhost:5006
+app.UseDefaultFiles(new DefaultFilesOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "src")),
+    RequestPath = ""
+});
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "src")),
+    RequestPath = ""
+});
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
