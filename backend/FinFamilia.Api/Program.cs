@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Banco de dados PostgreSQL via EF Core
 builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    opt.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 
 // Swagger para testar a API no browser
 builder.Services.AddEndpointsApiExplorer();

@@ -1,13 +1,12 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace FinFamilia.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialSQLiteCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -16,14 +15,14 @@ namespace FinFamilia.Api.Migrations
                 name: "Cartoes",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Nome = table.Column<string>(type: "text", nullable: false),
-                    Bandeira = table.Column<string>(type: "text", nullable: false),
-                    Limite = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    Cor = table.Column<string>(type: "text", nullable: false),
-                    Fechamento = table.Column<int>(type: "integer", nullable: false),
-                    Vencimento = table.Column<int>(type: "integer", nullable: false)
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Nome = table.Column<string>(type: "TEXT", nullable: false),
+                    Bandeira = table.Column<string>(type: "TEXT", nullable: false),
+                    Limite = table.Column<decimal>(type: "TEXT", precision: 18, scale: 2, nullable: false),
+                    Cor = table.Column<string>(type: "TEXT", nullable: false),
+                    Fechamento = table.Column<int>(type: "INTEGER", nullable: false),
+                    Vencimento = table.Column<int>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -34,11 +33,11 @@ namespace FinFamilia.Api.Migrations
                 name: "Categorias",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Nome = table.Column<string>(type: "text", nullable: false),
-                    Emoji = table.Column<string>(type: "text", nullable: false),
-                    Cor = table.Column<string>(type: "text", nullable: false)
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Nome = table.Column<string>(type: "TEXT", nullable: false),
+                    Emoji = table.Column<string>(type: "TEXT", nullable: false),
+                    Cor = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -49,10 +48,10 @@ namespace FinFamilia.Api.Migrations
                 name: "Pessoas",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Nome = table.Column<string>(type: "text", nullable: false),
-                    Cor = table.Column<string>(type: "text", nullable: false)
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Nome = table.Column<string>(type: "TEXT", nullable: false),
+                    Cor = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -63,14 +62,14 @@ namespace FinFamilia.Api.Migrations
                 name: "Compras",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Descricao = table.Column<string>(type: "text", nullable: false),
-                    Valor = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    Parcelas = table.Column<int>(type: "integer", nullable: false),
-                    DataCompra = table.Column<DateOnly>(type: "date", nullable: false),
-                    CartaoId = table.Column<int>(type: "integer", nullable: false),
-                    CategoriaId = table.Column<int>(type: "integer", nullable: false)
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Descricao = table.Column<string>(type: "TEXT", nullable: false),
+                    Valor = table.Column<decimal>(type: "TEXT", precision: 18, scale: 2, nullable: false),
+                    Parcelas = table.Column<int>(type: "INTEGER", nullable: false),
+                    DataCompra = table.Column<DateOnly>(type: "TEXT", nullable: false),
+                    CartaoId = table.Column<int>(type: "INTEGER", nullable: false),
+                    CategoriaId = table.Column<int>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -93,8 +92,8 @@ namespace FinFamilia.Api.Migrations
                 name: "ComprasPessoas",
                 columns: table => new
                 {
-                    ComprasId = table.Column<int>(type: "integer", nullable: false),
-                    PessoasId = table.Column<int>(type: "integer", nullable: false)
+                    ComprasId = table.Column<int>(type: "INTEGER", nullable: false),
+                    PessoasId = table.Column<int>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {

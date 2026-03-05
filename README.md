@@ -10,7 +10,7 @@ Aplicação web para controle de gastos em cartões de crédito da família, com
 - **Pessoas** — cadastro de membros da família para vincular às compras
 - **Categorias** — categorias personalizadas com emoji e cor
 - **Navegação por mês** — sidebar com todos os meses ativos (do início do ano até o último mês com parcela)
-- **Persistência em banco de dados** — todos os dados são armazenados no PostgreSQL via API REST
+- **Persistência em banco de dados** — todos os dados são armazenados localmente em um arquivo SQLite via API REST
 
 ## Tecnologias
 
@@ -25,9 +25,9 @@ Aplicação web para controle de gastos em cartões de crédito da família, com
 
 - [.NET 10](https://dotnet.microsoft.com/) — ASP.NET Core Minimal API
 - [Entity Framework Core 10](https://learn.microsoft.com/ef/core/) — ORM
-- [Npgsql](https://npgsql.org/) — provider PostgreSQL para EF Core
+- [Microsoft.EntityFrameworkCore.Sqlite](https://learn.microsoft.com/ef/core/providers/sqlite/) — provider SQLite para EF Core
 - [Swashbuckle / Swagger UI](https://swagger.io/) — documentação interativa da API
-- [PostgreSQL 17](https://www.postgresql.org/) — banco de dados relacional
+- [SQLite](https://www.sqlite.org/) — banco de dados relacional (arquivo local)
 
 ## Estrutura do projeto
 
@@ -59,35 +59,11 @@ projeto-finfamilia/
         └── Migrations/               # Migrations EF Core (geradas automaticamente)
 ```
 
-## Pré-requisitos
-
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [PostgreSQL 17](https://www.postgresql.org/download/windows/)
 
-## Como executar
+### 1. Iniciar o backend
 
-### 1. Configurar o banco de dados
-
-No PostgreSQL, crie o usuário e o banco:
-
-```sql
-CREATE USER finfamilia WITH PASSWORD 'sua_senha';
-CREATE DATABASE finfamilia OWNER finfamilia;
-```
-
-### 2. Configurar a connection string
-
-Edite o arquivo `backend/FinFamilia.Api/appsettings.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "Default": "Host=localhost;Port=5432;Database=finfamilia;Username=finfamilia;Password=sua_senha"
-  }
-}
-```
-
-### 3. Iniciar o backend
+Navegue até a pasta do backend e execute o projeto. O banco de dados SQLite (`finfamilia.db`) será criado automaticamente na primeira execução.
 
 ```bash
 cd backend/FinFamilia.Api
@@ -97,7 +73,7 @@ dotnet run
 A API sobe em `http://localhost:5006`.  
 O Swagger UI fica disponível em `http://localhost:5006/swagger`.
 
-> As migrations são aplicadas automaticamente na primeira execução.
+> As migrations são aplicadas automaticamente e o arquivo do banco de dados é gerado na raiz da pasta `FinFamilia.Api`.
 
 ### 4. Abrir o frontend
 
@@ -126,7 +102,7 @@ Abra o arquivo `src/index.html` diretamente no navegador — nenhum servidor adi
 
 ## Dados e persistência
 
-Os dados são armazenados no PostgreSQL. O schema é gerenciado pelo Entity Framework Core via Migrations.
+Os dados são armazenados localmente em um arquivo SQLite (`finfamilia.db`). O schema é gerenciado pelo Entity Framework Core via Migrations.
 
 Tabelas criadas:
 
