@@ -9,16 +9,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Pessoa> Pessoas { get; set; }
     public DbSet<Categoria> Categorias { get; set; }
     public DbSet<Compra> Compras { get; set; }
+    public DbSet<CompraPessoa> CompraPessoas { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Relacionamento N:N entre Compra e Pessoa (tabela ComprasPessoas)
-        modelBuilder.Entity<Compra>()
-            .HasMany(c => c.Pessoas)
-            .WithMany(p => p.Compras)
-            .UsingEntity(j => j.ToTable("ComprasPessoas"));
+        // Entidade de junção explícita com chave composta
+        modelBuilder.Entity<CompraPessoa>(entity =>
+        {
+            entity.HasKey(cp => new { cp.CompraId, cp.PessoaId });
 
-        // Precisão de decimais para o PostgreSQL
+            entity.HasOne(cp => cp.Compra)
+                  .WithMany(c => c.CompraPessoas)
+                  .HasForeignKey(cp => cp.CompraId);
+
+            entity.HasOne(cp => cp.Pessoa)
+                  .WithMany(p => p.CompraPessoas)
+                  .HasForeignKey(cp => cp.PessoaId);
+
+            entity.Property(cp => cp.ValorRateio)
+                  .HasPrecision(18, 2);
+        });
+
+        // Precisão de decimais
         modelBuilder.Entity<Cartao>()
             .Property(c => c.Limite)
             .HasPrecision(18, 2);

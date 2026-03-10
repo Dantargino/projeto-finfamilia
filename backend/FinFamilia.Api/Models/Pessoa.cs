@@ -6,5 +6,5 @@ public class Pessoa
     public string Nome { get; set; } = "";
     public string Cor { get; set; } = "#e8ff5a";
 
-    public ICollection<Compra> Compras { get; set; } = [];
+    public ICollection<CompraPessoa> CompraPessoas { get; set; } = [];
 }

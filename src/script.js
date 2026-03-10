@@ -46,7 +46,7 @@ async function loadState() {
     state.pessoas = pessoas;
     state.categorias = categorias;
 
-    // Normaliza compras: garante que pessoaIds exista como array de ints
+    // Normaliza compras: mapeia compraPessoas (com valorRateio) e pessoaIds
     state.compras = compras.map((c) => ({
       id: c.id,
       descricao: c.descricao,
@@ -55,7 +55,13 @@ async function loadState() {
       dataCompra: c.dataCompra, // "YYYY-MM-DD"
       cartaoId: c.cartaoId,
       categoriaId: c.categoriaId,
-      pessoaIds: c.pessoaIds ?? [],
+      recorrente: c.recorrente ?? false,
+      dataInicioRecorrencia: c.dataInicioRecorrencia ?? null,
+      ativa: c.ativa ?? true,
+      // compraPessoas: [{pessoaId, valorRateio}] – a API retorna como 'pessoas'
+      compraPessoas: c.pessoas ?? [],
+      // pessoaIds mantido para compatibilidade com funções existentes
+      pessoaIds: (c.pessoas ?? []).map(cp => cp.pessoaId),
     }));
   } catch (e) {
     toast("Erro ao conectar com a API: " + e.message, false);
@@ -66,23 +72,36 @@ async function loadState() {
 // REGRAS DE NEGÓCIO
 // ═══════════════════════════════════════════
 
-// Retorna meses de janeiro do ano atual até o último mês com parcela
+// Retorna meses do início mais antigo até o último mês com parcela
 function getActiveMonths() {
   const now = new Date();
   const anoAtual = now.getFullYear();
   const mesAtual = now.toISOString().slice(0, 7);
 
-  // Encontra o último mês que possui alguma parcela
+  // Encontra o primeiro e último mês que possui alguma parcela ou recorrência
+  let primeiroMes = anoAtual + "-01";
   let ultimoMes = mesAtual;
   state.compras.forEach((c) => {
-    for (let p = 0; p < c.parcelas; p++) {
-      const d = addMonths(c.dataCompra, p).slice(0, 7);
-      if (d > ultimoMes) ultimoMes = d;
+    if (c.recorrente && c.ativa) {
+      // Recorrentes ativas vão até o mês atual (no mínimo)
+      const dataBase = getBaseDateForFatura(c);
+      const baseMes = dataBase.slice(0, 7);
+      if (baseMes < primeiroMes) primeiroMes = baseMes;
+      if (mesAtual > ultimoMes) ultimoMes = mesAtual;
+    } else {
+      const dataBase = getBaseDateForFatura(c);
+      const baseMes = dataBase.slice(0, 7);
+      if (baseMes < primeiroMes) primeiroMes = baseMes;
+      for (let p = 0; p < c.parcelas; p++) {
+        const d = addMonths(dataBase, p).slice(0, 7);
+        if (d > ultimoMes) ultimoMes = d;
+      }
     }
   });
 
-  // Gera sequência contínua: Jan/anoAtual → ultimoMes
-  const inicio = new Date(anoAtual, 0, 1);
+  // Gera sequência contínua: primeiroMes → ultimoMes
+  const [iniAno, iniMes] = primeiroMes.split("-").map(Number);
+  const inicio = new Date(iniAno, iniMes - 1, 1);
   const [fimAno, fimMes] = ultimoMes.split("-").map(Number);
   const fim = new Date(fimAno, fimMes - 1, 1);
   const months = [];
@@ -100,23 +119,84 @@ function addMonths(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
+// Function that calculates the base date for the first invoice of a purchase
+function getBaseDateForFatura(compra) {
+  const card = state.cartoes.find((c) => c.id === compra.cartaoId);
+  if (!card || !compra.dataCompra) return compra.dataCompra;
+  
+  const [y, m, d] = compra.dataCompra.split("-").map(Number);
+  // We use day 15 to avoid month-end rollover issues when adding months later
+  let baseDate = new Date(y, m - 1, 15);
+  
+  const original = baseDate.toISOString().slice(0, 10);
+  // If the purchase was made on or after the card's closing date, it goes to the next month's invoice
+  if (d >= card.fechamento) {
+    baseDate.setMonth(baseDate.getMonth() + 1);
+  }
+  
+  const result = baseDate.toISOString().slice(0, 10);
+  console.log(`[BaseDateForFatura] Compra ${compra.descricao} (${compra.dataCompra}) no dia ${d}, cartão fatura dia ${card.fechamento}. Original ${original} -> Result ${result}`);
+  
+  return result;
+}
+
 // Retorna as "entradas de fatura" para um mês/cartao específico
+// Gera uma entrada por pessoa por compra, para que cada participante
+// veja apenas a sua cota individual de cada compra.
 function getFaturaEntries(monthStr, cartaoId = null) {
   const entries = [];
   state.compras.forEach((c) => {
     if (cartaoId && c.cartaoId !== cartaoId) return;
-    for (let p = 0; p < c.parcelas; p++) {
-      const dt = addMonths(c.dataCompra, p);
-      if (dt.slice(0, 7) === monthStr) {
-        entries.push({
-          compra: c,
-          numeroParcela: p + 1,
-          totalParcelas: c.parcelas,
-          valorParcela: c.valor / c.parcelas,
-          dataCobranca: dt,
-          isParcelado: c.parcelas > 1,
-          isCarry: p > 0,
+    const dataBase = getBaseDateForFatura(c);
+    const numPessoas = c.pessoaIds.length || 1;
+
+    // Gera uma lista de pessoas para expandir (uma entry por pessoa)
+    const pessoasParaExpandir = c.pessoaIds.length > 0
+      ? c.pessoaIds.map(pid => {
+          const cp = c.compraPessoas.find(cp => cp.pessoaId === pid);
+          // Usa valorRateio se disponível, senão divide igualmente
+          const valorPessoa = cp && cp.valorRateio ? cp.valorRateio : c.valor / numPessoas;
+          return { pessoaId: pid, valorPessoa };
+        })
+      : [{ pessoaId: null, valorPessoa: c.valor }];
+
+    if (c.recorrente && c.ativa) {
+      const baseMes = dataBase.slice(0, 7);
+      if (monthStr >= baseMes) {
+        pessoasParaExpandir.forEach(({ pessoaId, valorPessoa }) => {
+          const pessoa = pessoaId ? state.pessoas.find(p => p.id === pessoaId) : null;
+          entries.push({
+            compra: c,
+            pessoa,
+            numeroParcela: 1,
+            totalParcelas: 1,
+            valorParcela: valorPessoa,
+            dataCobranca: monthStr + "-15",
+            isParcelado: false,
+            isCarry: false,
+            isRecorrente: true,
+          });
         });
+      }
+    } else {
+      for (let p = 0; p < c.parcelas; p++) {
+        const dt = addMonths(dataBase, p);
+        if (dt.slice(0, 7) === monthStr) {
+          pessoasParaExpandir.forEach(({ pessoaId, valorPessoa }) => {
+            const pessoa = pessoaId ? state.pessoas.find(pp => pp.id === pessoaId) : null;
+            entries.push({
+              compra: c,
+              pessoa,
+              numeroParcela: p + 1,
+              totalParcelas: c.parcelas,
+              valorParcela: valorPessoa / c.parcelas,
+              dataCobranca: dt,
+              isParcelado: c.parcelas > 1,
+              isCarry: p > 0,
+              isRecorrente: false,
+            });
+          });
+        }
       }
     }
   });
@@ -130,17 +210,33 @@ function getTotalMes(monthStr) {
 function getParcelasFuturas(monthStr) {
   const result = [];
   state.compras.forEach((c) => {
+    if (c.recorrente) return;
     if (c.parcelas <= 1) return;
+    const dataBase = getBaseDateForFatura(c);
+    const numPessoas = c.pessoaIds.length || 1;
+
+    const pessoasParaExpandir = c.pessoaIds.length > 0
+      ? c.pessoaIds.map(pid => {
+          const cp = c.compraPessoas.find(cp => cp.pessoaId === pid);
+          const valorPessoa = cp && cp.valorRateio ? cp.valorRateio : c.valor / numPessoas;
+          return { pessoaId: pid, valorPessoa };
+        })
+      : [{ pessoaId: null, valorPessoa: c.valor }];
+
     for (let p = 0; p < c.parcelas; p++) {
-      const dt = addMonths(c.dataCompra, p);
+      const dt = addMonths(dataBase, p);
       if (dt.slice(0, 7) > monthStr) {
-        result.push({
-          compra: c,
-          numeroParcela: p + 1,
-          totalParcelas: c.parcelas,
-          valorParcela: c.valor / c.parcelas,
-          dataCobranca: dt,
-          mes: dt.slice(0, 7),
+        pessoasParaExpandir.forEach(({ pessoaId, valorPessoa }) => {
+          const pessoa = pessoaId ? state.pessoas.find(pp => pp.id === pessoaId) : null;
+          result.push({
+            compra: c,
+            pessoa,
+            numeroParcela: p + 1,
+            totalParcelas: c.parcelas,
+            valorParcela: valorPessoa / c.parcelas,
+            dataCobranca: dt,
+            mes: dt.slice(0, 7),
+          });
         });
       }
     }
@@ -312,7 +408,7 @@ function renderDashboard() {
 // ═══════════════════════════════════════════
 // COMPRAS TABLE
 // ═══════════════════════════════════════════
-function renderComprasTable(entries, showDelete = true) {
+function renderComprasTable(entries, showActions = true) {
   if (entries.length === 0)
     return `<div class="empty"><div class="e-icon">🧾</div><p>Nenhuma compra neste mês</p></div>`;
   return `<table>
@@ -325,38 +421,46 @@ function renderComprasTable(entries, showDelete = true) {
         <th>Parcelas</th>
         <th>Data da Compra</th>
         <th style="text-align:right">Valor Parcela</th>
-        ${showDelete ? "<th></th>" : ""}
+        ${showActions ? '<th style="text-align:center">Ações</th>' : ''}
       </tr>
     </thead>
     <tbody>
       ${entries
         .map((e) => {
-          const cat = state.categorias.find(
+           const cat = state.categorias.find(
             (c) => c.id === e.compra.categoriaId,
           );
           const card = state.cartoes.find((c) => c.id === e.compra.cartaoId);
-          const pessoas = e.compra.pessoaIds
+          const pessoaNome = e.pessoa ? e.pessoa.nome : e.compra.pessoaIds
             .map((pid) => state.pessoas.find((p) => p.id === pid))
-            .filter(Boolean);
-          return `<tr class="${e.isCarry ? "carry-row" : ""}">
+            .filter(Boolean)
+            .map(p => p.nome).join(', ');
+          const recBadge = e.compra.recorrente
+            ? `<span style="font-size:10px;color:var(--accent4);margin-left:4px;" title="Recorrente">🔁</span>` : '';
+          return `<tr class="${e.isCarry ? 'carry-row' : ''}">
           <td>
-            <div style="font-weight:500">${e.compra.descricao}</div>
-            ${e.isCarry ? `<div class="carry-info">↩ Parcela de ${fmtMonth(e.compra.dataCompra.slice(0, 7))}</div>` : ""}
+            <div style="font-weight:500">${e.compra.descricao}${recBadge}</div>
+            ${e.isCarry ? `<div class="carry-info">↩ Parcela de ${fmtMonth(e.compra.dataCompra.slice(0, 7))}</div>` : ''}
           </td>
-          <td>${cat ? `<span class="badge badge-cat">${cat.emoji} ${cat.nome}</span>` : "—"}</td>
-          <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : "—"}</td>
-          <td>${pessoas.map((p) => p.nome).join(" ")}</td>
+          <td>${cat ? `<span class="badge badge-cat">${cat.emoji} ${cat.nome}</span>` : '—'}</td>
+          <td>${card ? `<span class="card-chip"><span class="card-dot" style="background:${card.cor}"></span>${card.nome}</span>` : '—'}</td>
+          <td>${pessoaNome || '—'}</td>
           <td>
-            <span class="badge ${e.isParcelado ? "badge-installment" : "badge-single"}">
-              ${e.isParcelado ? `${e.numeroParcela}/${e.totalParcelas}` : "à vista"}
+            <span class="badge ${e.isParcelado ? 'badge-installment' : 'badge-single'}">
+              ${e.isParcelado ? `${e.numeroParcela}/${e.totalParcelas}` : 'à vista'}
             </span>
           </td>
           <td>${fmtDate(e.compra.dataCompra)}</td>
           <td style="text-align:right; font-weight:600">${fmt(e.valorParcela)}</td>
-          ${showDelete ? `<td><button class="btn btn-danger" style="padding:4px 8px;font-size:10px;" onclick="deleteCompra(${e.compra.id})">✕</button></td>` : ""}
+          ${showActions ? `<td style="text-align:center">
+            <div style="display:flex;gap:4px;justify-content:center;">
+              <button class="btn btn-ghost" style="padding:4px 8px;font-size:10px;" onclick="openModal('compra',${e.compra.id})" title="Editar">✏️</button>
+              <button class="btn btn-danger" style="padding:4px 8px;font-size:10px;" onclick="safelyDelete('compra',${e.compra.id})" title="Excluir">✕</button>
+            </div>
+          </td>` : ''}
         </tr>`;
         })
-        .join("")}
+        .join('')}
     </tbody>
   </table>`;
 }
@@ -366,7 +470,7 @@ function renderComprasSection() {
   document.getElementById("compras-title").textContent =
     `Compras — ${fmtMonth(m)}`;
 
-  // Gastos do mês
+  // Gastos do mês (com botões de ação)
   const entries = getFaturaEntries(m);
   document.getElementById("compras-table-wrap").innerHTML = renderComprasTable(
     entries,
@@ -428,10 +532,17 @@ function renderCartoes() {
      let ocupado = 0;
      state.compras.forEach(c => {
        if (c.cartaoId !== cartaoId) return;
-       for (let p = 0; p < c.parcelas; p++) {
-         const dt = addMonths(c.dataCompra, p).slice(0, 7);
-         if (dt >= m) {
-           ocupado += (c.valor / c.parcelas);
+       const numPessoas = c.pessoaIds.length || 1;
+       if (c.recorrente && c.ativa) {
+         // Recorrentes contribuem com 1 mês de valor
+         ocupado += (c.valor / numPessoas);
+       } else {
+         const dataBase = getBaseDateForFatura(c);
+         for (let p = 0; p < c.parcelas; p++) {
+           const dt = addMonths(dataBase, p).slice(0, 7);
+           if (dt >= m) {
+             ocupado += (c.valor / c.parcelas / numPessoas);
+           }
          }
        }
      });
@@ -526,8 +637,16 @@ function renderPessoas() {
   
   // Dashboard / Summary
   const pessoasData = state.pessoas.map(p => {
+    // Busca todas as faturas do mês onde esta pessoa participa
     const entries = getFaturaEntries(m).filter(e => e.compra.pessoaIds.includes(p.id));
-    const total = entries.reduce((s, e) => s + (e.valorParcela / e.compra.pessoaIds.length), 0);
+    
+    // Calcula o total somando o rateio específico desta pessoa em cada compra
+    const total = entries.reduce((s, e) => {
+      const cp = e.compra.compraPessoas.find(at => at.pessoaId === p.id);
+      const rateioTotal = cp ? cp.valorRateio : (e.compra.valor / e.compra.pessoaIds.length);
+      return s + (rateioTotal / e.compra.parcelas);
+    }, 0);
+
     return { ...p, entriesCount: entries.length, total };
   }).sort((a, b) => b.total - a.total);
 
@@ -798,35 +917,56 @@ function closeModalOutside(e) {
 function modalCompra(id = null) {
   const compra = id ? state.compras.find(c => c.id === id) : null;
   const cartoesOpts = state.cartoes
-    .map((c) => `<option value="${c.id}" ${compra && compra.cartaoId === c.id ? "selected" : ""}>${c.nome}</option>`)
-    .join("");
+    .map((c) => `<option value="${c.id}" ${compra && compra.cartaoId === c.id ? 'selected' : ''}>${c.nome}</option>`)
+    .join('');
   const catOpts = state.categorias
-    .map((c) => `<option value="${c.id}" ${compra && compra.categoriaId === c.id ? "selected" : ""}>${c.emoji} ${c.nome}</option>`)
-    .join("");
+    .map((c) => `<option value="${c.id}" ${compra && compra.categoriaId === c.id ? 'selected' : ''}>${c.emoji} ${c.nome}</option>`)
+    .join('');
   const pessoasCheck = state.pessoas
     .map(
       (p) => `
-    <label class="checkbox-label">
-      <input type="checkbox" name="pessoas" value="${p.id}" ${compra && compra.pessoaIds.includes(p.id) ? "checked" : ""}>
+    <label class="checkbox-label" id="lbl-pessoa-${p.id}">
+      <input type="checkbox" name="pessoas" value="${p.id}" ${compra && compra.pessoaIds.includes(p.id) ? 'checked' : ''} onchange="atualizarRateio()">
       <span class="person-avatar" style="background:${p.cor};color:#000;width:18px;height:18px;font-size:9px;margin:0;">${p.nome[0]}</span>
       ${p.nome}
     </label>`,
     )
-    .join("");
+    .join('');
 
-  return `<div class="modal-title">${compra ? "Editar" : "Nova"} Compra</div>
-    <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Mercado, Netflix..." value="${compra ? compra.descricao : ""}"></div>
+  const isRecorrente = compra?.recorrente ?? false;
+  const isAtiva = compra?.ativa ?? true;
+
+  return `<div class="modal-title">${compra ? 'Editar' : 'Nova'} Compra</div>
+    <div class="form-group"><label id="label-data-compra">${isRecorrente ? 'Mês de Início' : 'Data da Compra'}</label><input id="f-data" type="date" value="${compra ? compra.dataCompra : new Date().toISOString().slice(0, 10)}"></div>
+    <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Mercado, Netflix..." value="${compra ? compra.descricao : ''}"></div>
     <div class="form-row">
-      <div class="form-group"><label>Valor Total (R$)</label><input id="f-valor" type="number" step="0.01" placeholder="0,00" value="${compra ? compra.valor : ""}"></div>
-      <div class="form-group"><label>Nº de Parcelas</label><input id="f-parcelas" type="number" min="1" value="${compra ? compra.parcelas : 1}" placeholder="1"></div>
+      <div class="form-group"><label>Valor Total (R$)</label><input id="f-valor" type="number" step="0.01" placeholder="0,00" value="${compra ? compra.valor : ''}" oninput="atualizarRateio()"></div>
+      <div class="form-group">
+        <label>Nº de Parcelas</label>
+        <input id="f-parcelas" type="number" min="1" value="${isRecorrente ? 1 : (compra ? compra.parcelas : 1)}" placeholder="1" ${isRecorrente ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+      </div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Data da Compra</label><input id="f-data" type="date" value="${compra ? compra.dataCompra : new Date().toISOString().slice(0, 10)}"></div>
       <div class="form-group"><label>Cartão</label><select id="f-cartao">${cartoesOpts}</select></div>
+      <div class="form-group"><label>Categoria</label><select id="f-cat">${catOpts}</select></div>
     </div>
-    <div class="form-group"><label>Categoria <span style="color:var(--accent3)">*única</span></label><select id="f-cat">${catOpts}</select></div>
     <div class="form-group"><label>Pessoas <span style="color:var(--text-muted);font-size:10px;">(pode selecionar múltiplas)</span></label>
       <div class="checkbox-group">${pessoasCheck}</div>
+    </div>
+    <div id="rateio-area" style="margin-bottom:14px;display:none;">
+      <label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Valor por Pessoa</label>
+      <div id="rateio-inputs"></div>
+    </div>
+    <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <label style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);cursor:pointer;" for="f-recorrente">🔁 Compra Recorrente (mensal)</label>
+        <input id="f-recorrente" type="checkbox" ${isRecorrente ? 'checked' : ''} onchange="toggleRecorrencia()" style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent);">
+      </div>
+      ${isRecorrente ? `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:12px;color:var(--text-muted);">Estará na fatura do mês seguinte?</span>
+        <input id="f-ativa" type="checkbox" ${isAtiva ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent);" title="Desmarcar para encerrar a recorrência">
+      </div>` : ''}
     </div>
     <div class="form-actions">
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -936,9 +1076,14 @@ async function saveCompra(id = null) {
   const data = document.getElementById("f-data").value;
   const cartaoId = parseInt(document.getElementById("f-cartao").value);
   const catId = parseInt(document.getElementById("f-cat").value);
-  const pessoaIds = [
-    ...document.querySelectorAll("input[name=pessoas]:checked"),
-  ].map((cb) => parseInt(cb.value));
+  const pessoasCbs = [...document.querySelectorAll("input[name=pessoas]:checked")];
+  const pessoaIds = pessoasCbs.map((cb) => parseInt(cb.value));
+
+  // Recorrência
+  const recorrente = document.getElementById("f-recorrente")?.checked ?? false;
+  const dataInicioRecorrencia = recorrente ? data : null;
+  const ativaEl = document.getElementById("f-ativa");
+  const ativa = ativaEl ? ativaEl.checked : true;
 
   if (!desc || isNaN(valor) || !data || !cartaoId || !catId) {
     toast("Preencha todos os campos obrigatórios", false);
@@ -948,6 +1093,13 @@ async function saveCompra(id = null) {
     toast("Selecione ao menos uma pessoa", false);
     return;
   }
+
+  // Monta compraPessoas: usa valorRateio dos inputs ou divisão automática
+  const compraPessoas = pessoaIds.map((pid) => {
+    const input = document.getElementById(`rateio-${pid}`);
+    const valorRateio = input ? parseFloat(input.value) || 0 : parseFloat((valor / pessoaIds.length).toFixed(2));
+    return { pessoaId: pid, valorRateio };
+  });
 
   try {
     const method = id ? "PUT" : "POST";
@@ -961,7 +1113,10 @@ async function saveCompra(id = null) {
         dataCompra: data,
         cartaoId,
         categoriaId: catId,
-        pessoaIds,
+        recorrente,
+        dataInicioRecorrencia,
+        ativa,
+        pessoas: compraPessoas,
       }),
     });
     closeModal();
@@ -1066,6 +1221,7 @@ async function saveCategoria(id = null) {
 async function deleteCompra(id) {
   try {
     await apiFetch(`/api/compras/${id}`, { method: "DELETE" });
+    closeModal();
     await loadState();
     renderAll();
     toast("Compra removida", true);
@@ -1085,6 +1241,7 @@ async function deleteItem(type, id) {
 
   try {
     await apiFetch(`/api/${rota}/${id}`, { method: "DELETE" });
+    closeModal();
     await loadState();
     renderAll();
     toast("Removido com sucesso", true);
@@ -1128,10 +1285,161 @@ function renderAll() {
   }
 
   if (state.currentSection === "dashboard") renderDashboard();
-  else if (state.currentSection === "compras") renderComprasSection();
+  else if (state.currentSection === "compras") {
+    renderComprasSection();
+    // Preenche filtros de relatórios se a aba estiver pronta no DOM
+    renderRelatorios();
+  }
   else if (state.currentSection === "cartoes") renderCartoes();
   else if (state.currentSection === "pessoas") renderPessoas();
   else if (state.currentSection === "categorias") renderCategorias();
+}
+
+// ═══════════════════════════════════════════
+// RECORRÊNCIA
+// ═══════════════════════════════════════════
+function toggleRecorrencia() {
+  const cb = document.getElementById("f-recorrente");
+  const isChecked = cb.checked;
+
+  // Atualiza label do campo data
+  const labelData = document.getElementById("label-data-compra");
+  if (labelData) labelData.textContent = isChecked ? 'Mês de Início' : 'Data da Compra';
+
+  // Habilita/desabilita parcelas
+  const parcelas = document.getElementById("f-parcelas");
+  if (parcelas) {
+    parcelas.disabled = isChecked;
+    parcelas.style.opacity = isChecked ? '0.4' : '1';
+    parcelas.style.cursor = isChecked ? 'not-allowed' : '';
+    if (isChecked) parcelas.value = 1;
+  }
+
+  // Mostra/oculta toggle "Estará na fatura do mês seguinte?"
+  // Esse toggle só existe quando já é uma compra recorrente salva no banco
+  // Para novas compras recorrentes, "ativa" será true por padrão
+}
+
+// ═══════════════════════════════════════════
+// RATEIO AUTOMÁTICO
+// ═══════════════════════════════════════════
+function atualizarRateio() {
+  const valor = parseFloat(document.getElementById("f-valor")?.value) || 0;
+  const selecionados = [...document.querySelectorAll("input[name=pessoas]:checked")].map(cb => parseInt(cb.value));
+  const area = document.getElementById("rateio-area");
+  const inputs = document.getElementById("rateio-inputs");
+  if (!area || !inputs) return;
+
+  if (selecionados.length === 0) {
+    area.style.display = "none";
+    return;
+  }
+  area.style.display = "block";
+
+  // Divisão automática igualitária (arredondada para 2 casas)
+  const valorUni = parseFloat((valor / selecionados.length).toFixed(2));
+
+  inputs.innerHTML = selecionados.map((pid) => {
+    const pessoa = state.pessoas.find(p => p.id === pid);
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span class="person-avatar" style="background:${pessoa?.cor};color:#000;width:22px;height:22px;font-size:10px;margin:0;flex-shrink:0;">${pessoa?.nome[0]}</span>
+      <span style="font-size:12px;flex:1;">${pessoa?.nome}</span>
+      <input id="rateio-${pid}" type="number" step="0.01" value="${valorUni}" style="width:100px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;">
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════
+// RELATÓRIOS
+// ═══════════════════════════════════════════
+function renderRelatorios() {
+  // Preenche o select de pessoas
+  const relPessoa = document.getElementById("rel-pessoa");
+  if (relPessoa && relPessoa.options.length === 1) {
+    state.pessoas.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.nome;
+      relPessoa.appendChild(opt);
+    });
+  }
+
+  // Preenche mês
+  const relMes = document.getElementById("rel-mes");
+  if (relMes && relMes.options.length === 0) {
+    const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    meses.forEach((nome, i) => {
+      const opt = document.createElement("option");
+      opt.value = i + 1;
+      opt.textContent = nome;
+      if (i + 1 === new Date().getMonth() + 1) opt.selected = true;
+      relMes.appendChild(opt);
+    });
+  }
+
+  // Preenche ano
+  const relAno = document.getElementById("rel-ano");
+  if (relAno && relAno.options.length === 0) {
+    const anoAtual = new Date().getFullYear();
+    for (let a = anoAtual - 2; a <= anoAtual + 1; a++) {
+      const opt = document.createElement("option");
+      opt.value = a;
+      opt.textContent = a;
+      if (a === anoAtual) opt.selected = true;
+      relAno.appendChild(opt);
+    }
+  }
+}
+
+function openModalExportar() {
+  const box = document.getElementById("modal-box");
+  box.innerHTML = `
+    <div class="modal-title">Exportar Relatório</div>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Selecione o formato do arquivo:</p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="btn btn-ghost" style="justify-content:flex-start;padding:14px 16px;font-size:13px;" onclick="exportarRelatorio('csv');closeModal();">
+        📄 <strong>CSV</strong> <span style="color:var(--text-muted);margin-left:8px;font-size:11px;">Texto separado por ponto e vírgula, abre no Excel</span>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;padding:14px 16px;font-size:13px;" onclick="exportarRelatorio('xlsx');closeModal();">
+        📊 <strong>XLSX</strong> <span style="color:var(--text-muted);margin-left:8px;font-size:11px;">Planilha Excel nativa</span>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;padding:14px 16px;font-size:13px;" onclick="exportarRelatorio('pdf');closeModal();">
+        📑 <strong>PDF</strong> <span style="color:var(--text-muted);margin-left:8px;font-size:11px;">Documento para impressão ou envio</span>
+      </button>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById("modal-overlay").classList.add("open");
+}
+
+async function exportarRelatorio(formato) {
+  const pessoaId = document.getElementById("rel-pessoa")?.value || "";
+  const mes = document.getElementById("rel-mes")?.value || "";
+  const ano = document.getElementById("rel-ano")?.value || "";
+
+  const params = new URLSearchParams();
+  if (pessoaId) params.append("pessoaId", pessoaId);
+  if (mes) params.append("mes", mes);
+  if (ano) params.append("ano", ano);
+
+  const url = `${API_URL}/api/relatorios/${formato}?${params.toString()}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const ext = formato === "csv" ? "csv" : formato === "xlsx" ? "xlsx" : "pdf";
+    a.download = `relatorio_finfamilia.${ext}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`Relatório ${formato.toUpperCase()} gerado!`, true);
+  } catch(e) {
+    toast("Erro ao gerar relatório: " + e.message, false);
+  }
 }
 
 // ═══════════════════════════════════════════

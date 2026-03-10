@@ -50,5 +50,6 @@ app.MapCartaoEndpoints();
 app.MapPessoaEndpoints();
 app.MapCategoriaEndpoints();
 app.MapCompraEndpoints();
+app.MapRelatorioEndpoints();
 
 app.Run();

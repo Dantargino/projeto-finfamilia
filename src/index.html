@@ -4,10 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FinFamília — Controle de Cartões</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -64,6 +60,9 @@
             </button>
             <button class="tab" onclick="switchTab('categorias-tab')">
               Por Categoria
+            </button>
+            <button class="tab" onclick="switchTab('relatorios')">
+              📤 Relatórios
             </button>
           </div>
 
@@ -135,6 +134,37 @@
                   <div class="cat-list" id="cat-chart2"></div>
                 </div>
               </div>
+
+              <!-- ABA RELATÓRIOS -->
+              <div id="tab-relatorios" class="tab-panel" style="display: none">
+                <div class="table-card">
+                  <div class="table-header">
+                    <div class="table-title">Exportar Relatório</div>
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">Pessoa</label>
+                        <select id="rel-pessoa" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-family:var(--font-ui);font-size:12px;outline:none;">
+                          <option value="">Todas</option>
+                        </select>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Mês</label>
+                        <select id="rel-mes" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-family:var(--font-ui);font-size:12px;outline:none;"></select>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Ano</label>
+                        <select id="rel-ano" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-family:var(--font-ui);font-size:12px;outline:none;"></select>
+                      </div>
+                      <button class="btn btn-accent" onclick="openModalExportar()">
+                        📤 Exportar
+                      </button>
+                    </div>
+                  </div>
+                  <div style="padding:32px;text-align:center;color:var(--text-dim);font-size:13px;">
+                    Selecione os filtros acima e clique em <strong style="color:var(--accent)">Exportar</strong> para baixar o relatório.
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- CARTÕES -->
@@ -181,6 +211,7 @@
                 <div id="categorias-list" style="padding: 12px"></div>
               </div>
             </div>
+
           </div>
         </main>
       </div>
@@ -197,6 +228,6 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=3"></script>
   </body>
 </html>

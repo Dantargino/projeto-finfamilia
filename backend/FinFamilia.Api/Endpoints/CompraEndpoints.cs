@@ -4,7 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinFamilia.Api.Endpoints;
 
-// DTO para criação/atualização de compra (recebe pessoaIds como lista)
+// Sub-DTO para rateio por pessoa
+public record CompraPessoaRequest(int PessoaId, decimal ValorRateio);
+
+// DTO para criação/atualização de compra
 public record CompraRequest(
     string Descricao,
     decimal Valor,
@@ -12,7 +15,10 @@ public record CompraRequest(
     DateOnly DataCompra,
     int CartaoId,
     int CategoriaId,
-    List<int> PessoaIds
+    bool Recorrente,
+    DateOnly? DataInicioRecorrencia,
+    bool Ativa,
+    List<CompraPessoaRequest> Pessoas
 );
 
 public static class CompraEndpoints
@@ -26,7 +32,8 @@ public static class CompraEndpoints
             await db.Compras
                 .Include(c => c.Cartao)
                 .Include(c => c.Categoria)
-                .Include(c => c.Pessoas)
+                .Include(c => c.CompraPessoas)
+                    .ThenInclude(cp => cp.Pessoa)
                 .Select(c => new
                 {
                     c.Id,
@@ -34,12 +41,20 @@ public static class CompraEndpoints
                     c.Valor,
                     c.Parcelas,
                     c.DataCompra,
+                    c.Recorrente,
+                    c.DataInicioRecorrencia,
+                    c.Ativa,
                     c.CartaoId,
                     cartao = new { c.Cartao.Id, c.Cartao.Nome, c.Cartao.Cor },
                     c.CategoriaId,
                     categoria = new { c.Categoria.Id, c.Categoria.Nome, c.Categoria.Emoji, c.Categoria.Cor },
-                    pessoaIds = c.Pessoas.Select(p => p.Id).ToList(),
-                    pessoas = c.Pessoas.Select(p => new { p.Id, p.Nome, p.Cor }).ToList()
+                    pessoas = c.CompraPessoas.Select(cp => new
+                    {
+                        cp.PessoaId,
+                        cp.Pessoa.Nome,
+                        cp.Pessoa.Cor,
+                        cp.ValorRateio
+                    }).ToList()
                 })
                 .ToListAsync());
 
@@ -49,17 +64,42 @@ public static class CompraEndpoints
             var compra = await db.Compras
                 .Include(c => c.Cartao)
                 .Include(c => c.Categoria)
-                .Include(c => c.Pessoas)
+                .Include(c => c.CompraPessoas)
+                    .ThenInclude(cp => cp.Pessoa)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
-            return compra is null ? Results.NotFound() : Results.Ok(compra);
+            if (compra is null) return Results.NotFound();
+
+            return Results.Ok(new
+            {
+                compra.Id,
+                compra.Descricao,
+                compra.Valor,
+                compra.Parcelas,
+                compra.DataCompra,
+                compra.Recorrente,
+                compra.DataInicioRecorrencia,
+                compra.Ativa,
+                compra.CartaoId,
+                cartao = new { compra.Cartao.Id, compra.Cartao.Nome, compra.Cartao.Cor },
+                compra.CategoriaId,
+                categoria = new { compra.Categoria.Id, compra.Categoria.Nome, compra.Categoria.Emoji, compra.Categoria.Cor },
+                pessoas = compra.CompraPessoas.Select(cp => new
+                {
+                    cp.PessoaId,
+                    cp.Pessoa.Nome,
+                    cp.Pessoa.Cor,
+                    cp.ValorRateio
+                }).ToList()
+            });
         });
 
         // Cria nova compra
         group.MapPost("/", async (CompraRequest req, AppDbContext db) =>
         {
-            var pessoas = await db.Pessoas
-                .Where(p => req.PessoaIds.Contains(p.Id))
+            var pessoaIds = req.Pessoas.Select(p => p.PessoaId).ToList();
+            var pessoasExistentes = await db.Pessoas
+                .Where(p => pessoaIds.Contains(p.Id))
                 .ToListAsync();
 
             var compra = new Compra
@@ -70,11 +110,26 @@ public static class CompraEndpoints
                 DataCompra = req.DataCompra,
                 CartaoId = req.CartaoId,
                 CategoriaId = req.CategoriaId,
-                Pessoas = pessoas
+                Recorrente = req.Recorrente,
+                DataInicioRecorrencia = req.DataInicioRecorrencia,
+                Ativa = req.Ativa,
             };
 
             db.Compras.Add(compra);
             await db.SaveChangesAsync();
+
+            // Adiciona os rateios
+            foreach (var pessoaReq in req.Pessoas)
+            {
+                db.CompraPessoas.Add(new CompraPessoa
+                {
+                    CompraId = compra.Id,
+                    PessoaId = pessoaReq.PessoaId,
+                    ValorRateio = pessoaReq.ValorRateio
+                });
+            }
+            await db.SaveChangesAsync();
+
             return Results.Created($"/api/compras/{compra.Id}", new { compra.Id });
         });
 
@@ -82,14 +137,10 @@ public static class CompraEndpoints
         group.MapPut("/{id:int}", async (int id, CompraRequest req, AppDbContext db) =>
         {
             var compra = await db.Compras
-                .Include(c => c.Pessoas)
+                .Include(c => c.CompraPessoas)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (compra is null) return Results.NotFound();
-
-            var pessoas = await db.Pessoas
-                .Where(p => req.PessoaIds.Contains(p.Id))
-                .ToListAsync();
 
             compra.Descricao = req.Descricao;
             compra.Valor = req.Valor;
@@ -97,10 +148,35 @@ public static class CompraEndpoints
             compra.DataCompra = req.DataCompra;
             compra.CartaoId = req.CartaoId;
             compra.CategoriaId = req.CategoriaId;
-            compra.Pessoas = pessoas;
+            compra.Recorrente = req.Recorrente;
+            compra.DataInicioRecorrencia = req.DataInicioRecorrencia;
+            compra.Ativa = req.Ativa;
+
+            // Remove rateios antigos e recria
+            db.CompraPessoas.RemoveRange(compra.CompraPessoas);
+            foreach (var pessoaReq in req.Pessoas)
+            {
+                db.CompraPessoas.Add(new CompraPessoa
+                {
+                    CompraId = compra.Id,
+                    PessoaId = pessoaReq.PessoaId,
+                    ValorRateio = pessoaReq.ValorRateio
+                });
+            }
 
             await db.SaveChangesAsync();
             return Results.Ok(new { compra.Id });
+        });
+
+        // Encerra recorrência (marca Ativa = false sem excluir)
+        group.MapPatch("/{id:int}/encerrar", async (int id, AppDbContext db) =>
+        {
+            var compra = await db.Compras.FindAsync(id);
+            if (compra is null) return Results.NotFound();
+
+            compra.Ativa = false;
+            await db.SaveChangesAsync();
+            return Results.Ok(new { compra.Id, compra.Ativa });
         });
 
         // Remove compra

@@ -8,12 +8,17 @@ public class Compra
     public int Parcelas { get; set; } = 1;
     public DateOnly DataCompra { get; set; }
 
+    // Recorrência mensal (ex: serviços de streaming)
+    public bool Recorrente { get; set; } = false;
+    public DateOnly? DataInicioRecorrencia { get; set; }
+    public bool Ativa { get; set; } = true;
+
     public int CartaoId { get; set; }
     public Cartao Cartao { get; set; } = null!;
 
     public int CategoriaId { get; set; }
     public Categoria Categoria { get; set; } = null!;
 
-    // Relacionamento N:N com Pessoa (tabela de junção gerada automaticamente pelo EF)
-    public ICollection<Pessoa> Pessoas { get; set; } = [];
+    // Relacionamento N:N com Pessoa via entidade explícita (permite armazenar ValorRateio)
+    public ICollection<CompraPessoa> CompraPessoas { get; set; } = [];
 }
